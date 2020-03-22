@@ -1,9 +1,13 @@
 #!/bin/bash
 
+GREEN="\e[0;32m"
+NO_COLOR="\e[0m"
+
 VENV_DIR=venv
+CLI_ENTRYPOINT=app/cli.py
 
 if [[ ! -x $VENV_DIR ]]; then
-    echo "Installing required packages"
+    echo -e "${GREEN}Installing required packages${NO_COLOR}"
     python3 -m venv --clear $VENV_DIR
     source $VENV_DIR/bin/activate
     
@@ -15,6 +19,7 @@ fi
 
 source $VENV_DIR/bin/activate
 
-echo hello
+# thanks to fire package, we can directly call classes and functions from file $CLI_ENTRYPOINT
+python3 $CLI_ENTRYPOINT "$@"
 
 deactivate
