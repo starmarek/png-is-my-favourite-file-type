@@ -11,12 +11,12 @@ class CLI():
         if verbose:
             log.setLevel(logging.DEBUG)
 
-        self._file = file
+        self.file = file
 
     def metadata(self):
-        # printing metadata
-        with PngParser(self._file) as png:
-            pass
+        # printing metadta
+        with PngParser(self.file) as png:
+            png.print_chunks()
 
     def print(self):
         # print PNG

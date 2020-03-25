@@ -45,4 +45,3 @@ if __name__ == '__main__':
 ```
 
 So as you see all methods of ```CLI``` class are configured to work with *fire* package. For more detailed explanation please take a look at [*fire guide*](https://github.com/google/python-fire/blob/master/docs/guide.md).
-
