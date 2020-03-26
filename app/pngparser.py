@@ -1,14 +1,14 @@
 import logging
-from chunk import Chunk
+import chunk as ch
 
 log = logging.getLogger(__name__)
 
 PNG_MAGIC_NUMBER = b'\x89PNG\r\n\x1a\n'
 
-class PngParser():
-    def __init__(self, file):
+class PngParser:
+    def __init__(self, file_name):
         log.debug('Openning file')
-        self.file = open(file, 'rb')
+        self.file = open(file_name, 'rb')
         self.chunks = []
 
         log.debug('Checking signature')
@@ -26,12 +26,24 @@ class PngParser():
         log.debug('Closing file')
         self.file.close()
 
+    def get_chunk_type(self):
+        current_position = self.file.tell()
+        self.file.seek(current_position + ch.Chunk.LENGTH)
+        chunk_type = self.file.read(ch.Chunk.TYPE)
+        self.file.seek(current_position)
+        return chunk_type
+
     def read_chunks(self):
         while True:
-            chunk = Chunk(self.file)
+            chunk_class_type = ch.CHUNKTYPES.get(self.get_chunk_type())
+
+            if chunk_class_type is None:
+                chunk = ch.Chunk(self.file)
+            else:
+                chunk = chunk_class_type(self.file)
             self.chunks.append(chunk)
 
-            if chunk.type_ == "IEND":
+            if chunk.type_ == b"IEND":
                 break
 
     def print_chunks(self):

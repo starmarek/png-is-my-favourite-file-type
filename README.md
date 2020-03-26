@@ -10,7 +10,7 @@ This is an app for png analysis. It allow you to:
 
 Type into your command line:
 ```bash
-./png_run.sh {command} {--file=<path-to-your-png-file>} [args]
+./png_run.sh {command} {--file-name=<path-to-your-png-file>} [args]
 ```
 Where **command** is one of:
 - metadata

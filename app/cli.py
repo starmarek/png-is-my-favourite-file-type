@@ -4,18 +4,17 @@ from pngparser import PngParser
 
 log = logging.getLogger()
 
-class CLI():
-    def __init__(self, file, verbose=False):
+class CLI:
+    def __init__(self, file_name, verbose=False):
         logging.basicConfig(level=logging.INFO,
                             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         if verbose:
             log.setLevel(logging.DEBUG)
-
-        self.file = file
+        self.file_name = file_name
 
     def metadata(self):
         # printing metadta
-        with PngParser(self.file) as png:
+        with PngParser(self.file_name) as png:
             png.print_chunks()
 
     def print(self):
