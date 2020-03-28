@@ -4,37 +4,24 @@ import logging
 log = logging.getLogger(__name__)
 
 class Chunk:
-    LENGTH = 4
-    TYPE = 4
-    DATA: int
-    CRC = 4
-    def __init__(self, file_handler):
-        log.debug('Start parsing chunk')
-        self.parse(file_handler)
+    LENGTH_FIELD_LEN = 4
+    TYPE_FIELD_LEN = 4
+    CRC_FIELD_LEN = 4
+
+    def __init__(self, length, type_, data, crc):
+        log.debug(f'Creating {type_} chunk')
+        self.length = length
+        self.type_ = type_
+        self.data = data
+        self.crc = crc
 
     def __str__(self):
-        return (f"Length: {self.length}\nType: {self.type_}\n"
-                    f"Data: {self.data}\nCRC: {self.crc}\n")
-
-    @property
-    def _length(self):
-        return self.length
-
-    @_length.setter
-    def _length(self, value):
-        self.length = int.from_bytes(value, 'big')
-        Chunk.DATA = self.length
-
-    def parse(self, file_handler):
-        self._length = file_handler.read(Chunk.LENGTH)
-        self.type_ = file_handler.read(Chunk.TYPE)
-        self.data = file_handler.read(Chunk.DATA)
-        self.crc = file_handler.read(Chunk.CRC)
-
+        return (f"Length: {int.from_bytes(self.length, 'big')}\nType: {self.type_.decode('utf-8')}\n"
+                    f"Data: {self.data}\nCRC: {self.crc.hex(' ')}\n")
 
 class IHDR(Chunk):
-    def __init__(self, file_handler):
-        super().__init__(file_handler)
+    def __init__(self, length, type_, data, crc):
+        super().__init__(length, type_, data, crc)
 
         values = st.unpack('>iibbbbb', self.data)
         self.width = values[0]
