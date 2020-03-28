@@ -1,4 +1,4 @@
-import struct as st
+import struct
 import logging
 
 log = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class IHDR(Chunk):
     def __init__(self, length, type_, data, crc):
         super().__init__(length, type_, data, crc)
 
-        values = st.unpack('>iibbbbb', self.data)
+        values = struct.unpack('>iibbbbb', self.data)
         self.width = values[0]
         self.height = values[1]
         self.bit_depth = values[2]
