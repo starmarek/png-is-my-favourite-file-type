@@ -58,6 +58,12 @@ class PngParser:
         self.interlace_method = self.chunks[0].interlace_method
 
     def process_idat_data(self):
+        color_type_to_bytes_per_pixel_ratio = {
+            0: 1,
+            2: 3,
+            4: 2,
+            6: 4
+        }
         def paeth_predictor(a, b, c):
             p = a + b - c
             pa = abs(p - a)
@@ -72,19 +78,22 @@ class PngParser:
             return Pr
 
         def recon_a(r, c):
-            return self.reconstructed_idat_data[r * stride + c - bytesPerPixel] if c >= bytesPerPixel else 0
+            return self.reconstructed_idat_data[r * stride + c - self.bytesPerPixel] if c >= self.bytesPerPixel else 0
 
         def recon_b(r, c):
             return self.reconstructed_idat_data[(r-1) * stride + c] if r > 0 else 0
 
         def recon_c(r, c):
-            return self.reconstructed_idat_data[(r-1) * stride + c - bytesPerPixel] if r > 0 and c >= bytesPerPixel else 0
+            return self.reconstructed_idat_data[(r-1) * stride + c - self.bytesPerPixel] if r > 0 and c >= self.bytesPerPixel else 0
 
         IDAT_data = b''.join(chunk.data for chunk in self.chunks if chunk.type_ == b'IDAT')
         IDAT_data = zlib.decompress(IDAT_data)
 
-        bytesPerPixel = 4
-        stride = self.width * bytesPerPixel
+        self.bytesPerPixel = color_type_to_bytes_per_pixel_ratio.get(self.color_type)
+        expected_IDAT_data_len = self.height * (1 + self.width * self.bytesPerPixel)
+
+        assert expected_IDAT_data_len == len(IDAT_data), "Image's decompressed IDAT data is not as expected. Corrupted image"
+        stride = self.width * self.bytesPerPixel
 
         i = 0
         for r in range(self.height): # for each scanline

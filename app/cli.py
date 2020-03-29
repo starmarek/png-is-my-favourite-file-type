@@ -53,7 +53,10 @@ class CLI:
     def print(self):
         # print PNG from reconstructed IHDR data
         with PngParser(self.file_name) as png:
-            plt.imshow(np.array(png.reconstructed_idat_data).reshape((png.height, png.width, 4)))
+            if png.bytesPerPixel == 1:
+                plt.imshow(np.array(png.reconstructed_idat_data).reshape((png.height, png.width)), cmap='gray', vmin=0, vmax=255)
+            else:
+                plt.imshow(np.array(png.reconstructed_idat_data).reshape((png.height, png.width, png.bytesPerPixel)))
             plt.show()
 
     def spectrum(self):
@@ -72,7 +75,7 @@ if __name__ == '__main__':
     fire.Fire(CLI)
     # TODO:
     # - Better method to get png metadata than saving it as an pngparser's attribute, e.g. getter
+    # - Code refactor
     # - Implement IDAT class
-    # - Assertions
     # - Improve debug logs
     # - Improve docstrings
