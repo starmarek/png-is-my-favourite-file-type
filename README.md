@@ -16,9 +16,13 @@ Where **command** is one of:
 - metadata
 - print
 
-For flags that you can pass to runner script type:
+You can print flags that you can pass to runner script via:
 ```bash
 ./png_run.sh --help
+```
+You can also check optional flags for every command, e.g.:
+```bash
+./png_run.sh metadata --help
 ```
 ### How to use your own file
 
@@ -28,7 +32,7 @@ E.g.
 ```bash
 ./png_run.sh print --file-name=/home/adam/files/mypng.png
 ```
-### More detailed explanation
+## More detailed explanation
 App is using [*fire*](https://github.com/google/python-fire) package as a command line interface. 
 
 In the *png_run.sh* you can find:

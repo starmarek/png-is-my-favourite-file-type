@@ -1,8 +1,15 @@
 import logging
-import fire
-import matplotlib.pyplot as plt
-import numpy as np
+import traceback
 from pngparser import PngParser
+
+try:
+    import fire
+    import matplotlib.pyplot as plt
+    import numpy as np
+except ModuleNotFoundError:
+    traceback.print_exc()
+    print("\033[1;33mBefore you will debug, please delete 'venv' dir from project root and try again.\033[0m")
+    exit(1)
 
 log = logging.getLogger()
 
@@ -38,10 +45,10 @@ class CLI:
         if self.verbose:
             log.setLevel(logging.DEBUG)
 
-    def metadata(self):
+    def metadata(self, skip_idat_data=False):
         # print metadta
         with PngParser(self.file_name) as png:
-            png.print_chunks()
+            png.print_chunks(skip_idat_data)
 
     def print(self):
         # print PNG from reconstructed IHDR data
@@ -67,7 +74,5 @@ if __name__ == '__main__':
     # - Better method to get png metadata than saving it as an pngparser's attribute, e.g. getter
     # - Implement IDAT class
     # - Assertions
-    # - Asking if user want to skip IDAT data print
     # - Improve debug logs
-    # - Add python try catch for not imported modules -> venv problem
     # - Improve docstrings

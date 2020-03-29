@@ -107,9 +107,11 @@ class PngParser:
                     raise Exception('unknown filter type: ' + str(filter_type))
                 self.reconstructed_idat_data.append(recon_x & 0xff) # truncation to byte
 
-    def print_chunks(self):
+    def print_chunks(self, skip_idat_data):
         for i, chunk in enumerate(self.chunks, 1):
             print(f"\033[1mCHUNK #{i}\033[0m")
-            # if chunk.type_ == b"IDAT":
-            #     continue
+            if chunk.type_ == b"IDAT" and skip_idat_data:
+                tmp = chunk.data; chunk.data = ''
+                print(chunk)
+                chunk.data = tmp; continue
             print(chunk)
