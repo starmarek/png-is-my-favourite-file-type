@@ -63,6 +63,9 @@ class IHDR(Chunk):
         assert self.filter_method == 0, f"Unsupported filter_method: {self.filter_method}. Only 0 is supported."
         assert self.interlace_method == 0, f"Unsupported interlace_method: {self.interlace_method}. Only 0 is supported."
 
+        # tepmorary
+        assert self.color_type != 3, f"We dont support color type {self.color_type} for now!"
+
 CHUNKTYPES = {
     b"IHDR": IHDR
 }

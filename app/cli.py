@@ -3,6 +3,7 @@ import traceback
 from pngparser import PngParser
 
 try:
+    from PIL import Image
     import fire
     import matplotlib.pyplot as plt
     import numpy as np
@@ -55,9 +56,9 @@ class CLI:
         with PngParser(self.file_name) as png:
             if png.bytesPerPixel == 1:
                 plt.imshow(np.array(png.reconstructed_idat_data).reshape((png.height, png.width)), cmap='gray', vmin=0, vmax=255)
+                plt.show()
             else:
-                plt.imshow(np.array(png.reconstructed_idat_data).reshape((png.height, png.width, png.bytesPerPixel)))
-            plt.show()
+                Image.fromarray(np.array(png.reconstructed_idat_data).reshape((png.height, png.width, png.bytesPerPixel)).astype(np.uint8)).show()
 
     def spectrum(self):
         # print spectrum diagram via FFT
