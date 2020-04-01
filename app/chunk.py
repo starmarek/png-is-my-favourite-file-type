@@ -1,5 +1,6 @@
 import struct
 import logging
+from itertools import zip_longest
 
 log = logging.getLogger(__name__)
 
@@ -9,7 +10,7 @@ class Chunk:
     CRC_FIELD_LEN = 4
 
     def __init__(self, length, type_, data, crc):
-        log.debug(f'Creating {type_} chunk')
+        log.debug(f"Creating {type_.decode('utf-8')} chunk")
         self.length = length
         self.type_ = type_
         self.data = data
@@ -63,9 +64,24 @@ class IHDR(Chunk):
         assert self.filter_method == 0, f"Unsupported filter_method: {self.filter_method}. Only 0 is supported."
         assert self.interlace_method == 0, f"Unsupported interlace_method: {self.interlace_method}. Only 0 is supported."
 
-        # tepmorary
-        assert self.color_type != 3, f"We dont support color type {self.color_type} for now!"
+class PLTE(Chunk):
+    def __init__(self, length, type_, data, crc):
+        super().__init__(length, type_, data, crc)
+
+    def __str__(self):
+        tmp = self.data
+        self.data = self.get_parsed_data()
+
+        try:
+            return super().__str__()
+        finally:
+            self.data = tmp
+
+    def get_parsed_data(self):
+        decoded_pixels = iter([int(byte, 16) for byte in self.data. hex(' ').split()])
+        return [pixel_tuple for pixel_tuple in zip_longest(*[decoded_pixels]*3)]
 
 CHUNKTYPES = {
-    b"IHDR": IHDR
+    b"IHDR": IHDR,
+    b"PLTE": PLTE
 }

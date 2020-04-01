@@ -10,16 +10,24 @@ class PngParser:
     def __init__(self, file_name):
         log.debug('Openning file')
         self.file = open(file_name, 'rb')
+
         self.chunks = []
         self.reconstructed_idat_data = []
+        self.chunks_count = {}
 
         log.debug('Checking signature')
         if self.file.read(len(PNG_MAGIC_NUMBER)) != PNG_MAGIC_NUMBER:
             raise Exception(f'{self.file.name} is not a PNG!')
+
         log.debug('Start Reading Chunks')
         self.read_chunks()
-        self.process_ihdr_data()
+
+        log.debug('Start proccessing IDAT')
         self.process_idat_data()
+
+        if self.chunks_count.get(b'PLTE'):
+            log.debug('Applaying pallette')
+            self.apply_pallette()
 
     def __enter__(self):
         return self
@@ -44,26 +52,20 @@ class PngParser:
             chunk = chunk_class_type(length, type_, data, crc)
 
             self.chunks.append(chunk)
+            self.chunks_count[type_] = self.chunks_count.get(type_, 0) + 1
 
             if chunk.type_ == b'IEND':
                 break
-
-    def process_ihdr_data(self):
-        self.width = self.chunks[0].width
-        self.height = self.chunks[0].height
-        self.bit_depth = self.chunks[0].bit_depth
-        self.color_type = self.chunks[0].color_type
-        self.compression_method = self.chunks[0].compression_method
-        self.filter_method = self.chunks[0].filter_method
-        self.interlace_method = self.chunks[0].interlace_method
 
     def process_idat_data(self):
         color_type_to_bytes_per_pixel_ratio = {
             0: 1,
             2: 3,
+            3: 1,
             4: 2,
             6: 4
         }
+
         def paeth_predictor(a, b, c):
             p = a + b - c
             pa = abs(p - a)
@@ -86,17 +88,19 @@ class PngParser:
         def recon_c(r, c):
             return self.reconstructed_idat_data[(r-1) * stride + c - self.bytesPerPixel] if r > 0 and c >= self.bytesPerPixel else 0
 
-        IDAT_data = b''.join(chunk.data for chunk in self.chunks if chunk.type_ == b'IDAT')
+        IDAT_data = b''.join(chunk.data for chunk in self.get_all_chunks_by_type(b'IDAT'))
         IDAT_data = zlib.decompress(IDAT_data)
 
-        self.bytesPerPixel = color_type_to_bytes_per_pixel_ratio.get(self.color_type)
-        expected_IDAT_data_len = self.height * (1 + self.width * self.bytesPerPixel)
+        self.bytesPerPixel = color_type_to_bytes_per_pixel_ratio.get(self.get_chunk_by_type(b'IHDR').color_type)
+        width = self.get_chunk_by_type(b'IHDR').width
+        height = self.get_chunk_by_type(b'IHDR').height
+        expected_IDAT_data_len = height * (1 + width * self.bytesPerPixel)
 
         assert expected_IDAT_data_len == len(IDAT_data), "Image's decompressed IDAT data is not as expected. Corrupted image"
-        stride = self.width * self.bytesPerPixel
+        stride = width * self.bytesPerPixel
 
         i = 0
-        for r in range(self.height): # for each scanline
+        for r in range(height): # for each scanline
             filter_type = IDAT_data[i] # first byte of scanline is filter type
             i += 1
             for c in range(stride): # for each byte in scanline
@@ -115,6 +119,20 @@ class PngParser:
                 else:
                     raise Exception('unknown filter type: ' + str(filter_type))
                 self.reconstructed_idat_data.append(recon_x & 0xff) # truncation to byte
+
+    def get_chunk_by_type(self, type_):
+        chunk_list = [chunk for chunk in self.chunks if chunk.type_ == type_]
+        return chunk_list[0]
+
+    def get_all_chunks_by_type(self, type_):
+        return [chunk for chunk in self.chunks if chunk.type_ == type_]
+
+    def apply_pallette(self):
+        pallette = self.get_chunk_by_type(b'PLTE').get_parsed_data()
+        self.reconstructed_idat_data = [pixel for indexed_pixel in self.reconstructed_idat_data for pixel in pallette[indexed_pixel]]
+
+        # apply_pallette replaced indexed pixels in reconstructed_idat_data with corresponding RGB pixels, thus number of bytes per pixel has increased from 1 to 3
+        self.bytesPerPixel = 3
 
     def print_chunks(self, skip_idat_data):
         for i, chunk in enumerate(self.chunks, 1):
