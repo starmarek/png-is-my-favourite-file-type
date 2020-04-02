@@ -49,11 +49,13 @@ class CLI:
     def metadata(self, skip_idat_data=False):
         # print metadta
         with PngParser(self.file_name) as png:
+            log.debug("Printing metadata")
             png.print_chunks(skip_idat_data)
 
     def print(self):
         # print PNG from reconstructed IHDR data
         with PngParser(self.file_name) as png:
+            log.debug("Printing file")
             width = png.get_chunk_by_type(b'IHDR').width
             height = png.get_chunk_by_type(b'IHDR').height
             if png.bytesPerPixel == 1:

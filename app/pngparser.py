@@ -19,10 +19,13 @@ class PngParser:
         if self.file.read(len(PNG_MAGIC_NUMBER)) != PNG_MAGIC_NUMBER:
             raise Exception(f'{self.file.name} is not a PNG!')
 
-        log.debug('Start Reading Chunks')
+        log.debug('Reading Chunks')
         self.read_chunks()
 
-        log.debug('Start proccessing IDAT')
+        log.debug('Asserting PNG data')
+        self.assert_png()
+
+        log.debug('Proccessing IDAT')
         self.process_idat_data()
 
         if self.chunks_count.get(b'PLTE'):
@@ -44,6 +47,8 @@ class PngParser:
     def read_chunks(self):
         while True:
             length = self.read_from_file(ch.Chunk.LENGTH_FIELD_LEN)
+            if not length:
+                break
             type_ = self.read_from_file(ch.Chunk.TYPE_FIELD_LEN)
             data = self.read_from_file(int.from_bytes(length, 'big'))
             crc = self.read_from_file(ch.Chunk.CRC_FIELD_LEN)
@@ -53,9 +58,6 @@ class PngParser:
 
             self.chunks.append(chunk)
             self.chunks_count[type_] = self.chunks_count.get(type_, 0) + 1
-
-            if chunk.type_ == b'IEND':
-                break
 
     def process_idat_data(self):
         color_type_to_bytes_per_pixel_ratio = {
@@ -120,9 +122,77 @@ class PngParser:
                     raise Exception('unknown filter type: ' + str(filter_type))
                 self.reconstructed_idat_data.append(recon_x & 0xff) # truncation to byte
 
+    def assert_png(self):
+        ihdr_chunk = self.get_chunk_by_type(b'IHDR')
+        first_idat_occurence = min(idx for idx, val in enumerate(self.chunks) if val.type_ == b'IDAT')
+
+        def assert_ihdr():
+            color_type_to_bit_depth_restriction = {
+                0: [1, 2, 4, 8, 16],
+                2: [8, 16],
+                3: [1, 2, 4, 8],
+                4: [8, 16],
+                6: [8, 16]
+            }
+            assert self.chunks_count.get(b'IHDR') == 1, f"Incorrect number of IHDR chunks: {self.chunks_count.get(b'IHDR')}"
+            assert isinstance(self.chunks[0], ch.IHDR), "IHDR must be the first chunk"
+            assert ihdr_chunk.width > 0, "Image width must be > 0"
+            assert ihdr_chunk.height > 0, "Image height must be > 0"
+            assert ihdr_chunk.bit_depth in [1, 2, 4, 8, 16], f"Wrong bit_depth: {ihdr_chunk.bit_depth}. It must be one of: 1, 2, 4, 8 ,16"
+            assert ihdr_chunk.color_type in [0, 2, 3, 4, 6], f"Wrong color_type: {ihdr_chunk.color_type}. It must be one of: 0, 2, 3, 4 ,16"
+            assert ihdr_chunk.bit_depth in color_type_to_bit_depth_restriction.get(ihdr_chunk.color_type), (f"Wrong color_type to bit_depth combination: {ihdr_chunk.color_type} : {ihdr_chunk.bit_depth}"
+                                                                                                f"\nIt must be one of: {color_type_to_bit_depth_restriction}"
+                                                                                                )
+            assert ihdr_chunk.compression_method == 0, f"Unsupported compression_method: {ihdr_chunk.compression_method}. Only 0 is supported."
+            assert ihdr_chunk.filter_method == 0, f"Unsupported filter_method: {ihdr_chunk.filter_method}. Only 0 is supported."
+            # We do not support Adam7 interlace
+            assert ihdr_chunk.interlace_method == 0, f"Unsupported interlace_method: {ihdr_chunk.interlace_method}. Only 0 is supported."
+
+        def assert_idat():
+            assert self.chunks_count.get(b'IDAT'), f"Incorrect number of IDAT chunks: {self.chunks_count.get(b'IDAT')}"
+
+            last_idat_occurence = max(idx for idx, val in enumerate(self.chunks) if val.type_ == b'IDAT')
+            only_idat_interval = self.chunks[first_idat_occurence : last_idat_occurence + 1]
+
+            assert all(obj.type_ == b'IDAT' for obj in only_idat_interval), "IDAT chunks must be consecutive!"
+
+        def assert_plte():
+            plte_chunks_number = self.chunks_count.get(b'PLTE')
+            if plte_chunks_number == None:
+                return
+            elif ihdr_chunk.color_type != 3:
+                assert ihdr_chunk.color_type == 2 or ihdr_chunk.color_type == 6, f"PLTE chunk must not appear for color type {ihdr_chunk.color_type}!"
+
+            plte_chunk = self.get_chunk_by_type(b'PLTE')
+            plte_index = self.chunks.index(plte_chunk)
+
+            assert plte_chunks_number == 1, f"Incorrect number of PLTE chunks: {plte_chunks_number}!"
+            assert first_idat_occurence > plte_index, "PLTE must be placed before IDAT!"
+            assert len(plte_chunk.get_parsed_data()) <= 2 ** ihdr_chunk.bit_depth, "Number of pallette entries shall not exceed 2^bit_depth!"
+            assert int.from_bytes(plte_chunk.length, 'big') % 3 == 0, "PLTE chunk length is not divisible by 3!"
+
+        def assert_iend():
+            assert self.chunks_count.get(b'IEND') == 1, f"Incorrect number of IEND chunks: {self.chunks_count.get(b'IEND')}"
+            assert self.chunks[-1].type_ == b'IEND', "IEND must be the last chunk"
+            assert len(self.get_chunk_by_type(b'IEND').data) == 0, "IEND chunk must be empty"
+
+        log.debug('Assert IHDR')
+        assert_ihdr()
+
+        log.debug('Assert IDAT')
+        assert_idat()
+
+        log.debug('Assert PLTE')
+        assert_plte()
+
+        log.debug('Assert IEND')
+        assert_iend()
+
     def get_chunk_by_type(self, type_):
-        chunk_list = [chunk for chunk in self.chunks if chunk.type_ == type_]
-        return chunk_list[0]
+        try:
+            return [chunk for chunk in self.chunks if chunk.type_ == type_][0]
+        except IndexError:
+            return None
 
     def get_all_chunks_by_type(self, type_):
         return [chunk for chunk in self.chunks if chunk.type_ == type_]
