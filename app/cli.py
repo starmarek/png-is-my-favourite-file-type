@@ -3,7 +3,6 @@ import traceback
 from pngparser import PngParser
 
 try:
-    from PIL import Image
     import fire
     import matplotlib.pyplot as plt
     import numpy as np
@@ -59,10 +58,21 @@ class CLI:
             width = png.get_chunk_by_type(b'IHDR').width
             height = png.get_chunk_by_type(b'IHDR').height
             if png.bytesPerPixel == 1:
+                # greyscale
                 plt.imshow(np.array(png.reconstructed_idat_data).reshape((height, width)), cmap='gray', vmin=0, vmax=255)
                 plt.show()
+            elif png.bytesPerPixel == 2:
+                # greyscale with alpha channel
+                png.reconstructed_idat_data = np.array(png.reconstructed_idat_data).reshape((height, width, png.bytesPerPixel))
+                grayscale = png.reconstructed_idat_data[:, :, 0]
+                alpha = png.reconstructed_idat_data[:, :, 1]
+                rgb_img = np.dstack((grayscale, grayscale, grayscale, alpha))
+                plt.imshow(rgb_img)
+                plt.show()
             else:
-                Image.fromarray(np.array(png.reconstructed_idat_data).reshape((height, width, png.bytesPerPixel)).astype(np.uint8)).show()
+                # truecolor, truecolor with alpha channel, pallette
+                plt.imshow(np.array(png.reconstructed_idat_data).reshape((height, width, png.bytesPerPixel)))
+                plt.show()
 
     def spectrum(self):
         # print spectrum diagram via FFT
