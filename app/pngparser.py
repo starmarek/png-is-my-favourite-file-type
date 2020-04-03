@@ -1,5 +1,6 @@
 import logging
 import zlib
+import math
 from chunk import CHUNKTYPES, Chunk, IHDR, IDAT, PLTE, temporary_data_change
 
 log = logging.getLogger(__name__)
@@ -7,7 +8,7 @@ log = logging.getLogger(__name__)
 PNG_MAGIC_NUMBER = b'\x89PNG\r\n\x1a\n'
 
 class PngParser:
-    def __init__(self, file_name, print_mode=False):
+    def __init__(self, file_name, print_mode=False, no_gamma_mode=False):
         log.debug('Openning file')
         self.file = open(file_name, 'rb')
 
@@ -33,6 +34,13 @@ class PngParser:
             if self.chunks_count.get(b'PLTE'):
                 log.debug('Applaying pallette')
                 self.apply_pallette()
+
+            if self.chunks_count.get(b'gAMA') and not no_gamma_mode:
+                if self.get_chunk_by_type(b'gAMA').gamma == 0:
+                    log.warning("Skipping gamma normalization because it has value 0!")
+                else:
+                    log.debug('Applaying gamma normalization')
+                    self.apply_gamma()
 
     def __enter__(self):
         return self
@@ -143,9 +151,10 @@ class PngParser:
             assert ihdr_chunk.height > 0, "Image height must be > 0"
             assert ihdr_chunk.bit_depth in [1, 2, 4, 8, 16], f"Wrong bit_depth: {ihdr_chunk.bit_depth}. It must be one of: 1, 2, 4, 8 ,16"
             assert ihdr_chunk.color_type in [0, 2, 3, 4, 6], f"Wrong color_type: {ihdr_chunk.color_type}. It must be one of: 0, 2, 3, 4 ,16"
-            assert ihdr_chunk.bit_depth in color_type_to_bit_depth_restriction.get(ihdr_chunk.color_type), (f"Wrong color_type to bit_depth combination: {ihdr_chunk.color_type} : {ihdr_chunk.bit_depth}"
-                                                                                                f"\nIt must be one of: {color_type_to_bit_depth_restriction}"
-                                                                                                )
+            assert ihdr_chunk.bit_depth in color_type_to_bit_depth_restriction.get(ihdr_chunk.color_type), (
+                                    f"Wrong color_type to bit_depth combination: {ihdr_chunk.color_type} : {ihdr_chunk.bit_depth}"
+                                    f"\nIt must be one of: {color_type_to_bit_depth_restriction}"
+                                    )
             assert ihdr_chunk.compression_method == 0, f"Unsupported compression_method: {ihdr_chunk.compression_method}. Only 0 is supported."
             assert ihdr_chunk.filter_method == 0, f"Unsupported filter_method: {ihdr_chunk.filter_method}. Only 0 is supported."
             # We do not support Adam7 interlace
@@ -191,11 +200,26 @@ class PngParser:
             log.debug('Assert tIME')
             assert time_chunks_number == 1, f"Incorrect number of tIME chunks: {time_chunks_number}"
 
+        def assert_gama():
+            gama_chunks_number = self.chunks_count.get(b'gAMA')
+            if not gama_chunks_number:
+                return
+
+            log.debug('Assert gAMA')
+            gama_chunk = self.get_chunk_by_type(b'gAMA')
+            gama_index = self.chunks.index(gama_chunk)
+
+            assert gama_chunks_number == 1, f"Incorrect number of gAMA chunks: {gama_chunks_number}"
+            assert first_idat_occurence > gama_index, "gAMA must be placed before IDAT!"
+            if self.get_chunk_by_type(b'PLTE'):
+                assert self.chunks.index(self.get_chunk_by_type(b'PLTE')) > gama_index, "gAMA must be placed before PLTE!"
+
         assert_ihdr()
         assert_idat()
         assert_plte()
         assert_iend()
         assert_time()
+        assert_gama()
 
     def get_chunk_by_type(self, type_):
         try:
@@ -213,14 +237,29 @@ class PngParser:
         # apply_pallette replaced indexed pixels in reconstructed_idat_data with corresponding RGB pixels, thus number of bytes per pixel has increased from 1 to 3
         self.bytesPerPixel = 3
 
-    def print_chunks(self, skip_idat_data, skip_plte_data):
+    def apply_gamma(self):
+        gamma = self.get_chunk_by_type(b'gAMA').gamma
+
+        # 2^bit_depth - 1 -> 255 for 8-bit | 31 for 5-bit etc.
+        max_frame_sample = 2 ** self.get_chunk_by_type(b'IHDR').bit_depth - 1
+        invGamma = 1.0 / gamma
+
+        # Steps to apply gamma:
+        # 1. Normalize pixels from [0, max_frame_sample] to [0, 1.0]
+        # 2. Aplly gamma via equation: output = input ^ (1 / gamma)
+        # 3. Reverse normalize output to [0, max_frame_sample]
+        # 4. Finally do: floor(output + 0.5)
+        # https://www.w3.org/TR/2003/REC-PNG-20031110/#13Decoder-gamma-handling
+        self.reconstructed_idat_data = [math.floor((((pixel / max_frame_sample) ** invGamma) * max_frame_sample) + 0.5) for pixel in self.reconstructed_idat_data]
+
+    def print_chunks(self, get_idat_data, get_plte_data):
         for i, chunk in enumerate(self.chunks, 1):
             print(f"\033[1mCHUNK #{i}\033[0m")
-            if isinstance(chunk, IDAT) and skip_idat_data:
+            if isinstance(chunk, IDAT) and not get_idat_data:
                 with temporary_data_change(chunk, ''):
                     print(chunk)
                     continue
-            elif isinstance(chunk, PLTE) and skip_plte_data:
+            elif isinstance(chunk, PLTE) and not get_plte_data:
                 with temporary_data_change(chunk, ''):
                     print(chunk)
                     continue

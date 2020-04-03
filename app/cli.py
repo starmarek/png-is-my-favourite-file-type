@@ -45,15 +45,15 @@ class CLI:
         if self.verbose:
             log.setLevel(logging.DEBUG)
 
-    def metadata(self, skip_idat_data=False, skip_plte_data=False):
+    def metadata(self, idat=False, plte=False):
         # print metadta
         with PngParser(self.file_name) as png:
             log.debug("Printing metadata")
-            png.print_chunks(skip_idat_data, skip_plte_data)
+            png.print_chunks(idat, plte)
 
-    def print(self):
+    def print(self, no_gamma=False):
         # print PNG from reconstructed IDAT data
-        with PngParser(self.file_name, True) as png:
+        with PngParser(self.file_name, print_mode=True, no_gamma_mode=no_gamma) as png:
             log.debug("Printing file")
             width = png.get_chunk_by_type(b'IHDR').width
             height = png.get_chunk_by_type(b'IHDR').height
@@ -95,3 +95,4 @@ if __name__ == '__main__':
     # - Spectrum diagram
     # - Add support for few other chunks
     # - Improve readme
+    # - Add assert existance function

@@ -81,6 +81,7 @@ class IEND(Chunk):
 class tIME(Chunk):
     def __init__(self, length, type_, data, crc):
         super().__init__(length, type_, data, crc)
+
         values = struct.unpack('>hbbbbb', self.data)
         self.year = values[0]
         self.month = values[1]
@@ -94,10 +95,24 @@ class tIME(Chunk):
         with temporary_data_change(self, data):
             return super().__str__()
 
+class gAMA(Chunk):
+    def __init__(self, length, type_, data, crc):
+        super().__init__(length, type_, data, crc)
+
+        # PNG specification says, that stored gamma value is multiplied by 100000
+        self.gamma = int.from_bytes(data, 'big') / 100000
+        if self.gamma == 0:
+            log.warning("Gamma shouldn't have value 0!")
+
+    def __str__(self):
+        with temporary_data_change(self, self.gamma):
+            return super().__str__()
+
 CHUNKTYPES = {
     b'IHDR': IHDR,
     b'PLTE': PLTE,
     b'IDAT': IDAT,
     b'IEND': IEND,
-    b'tIME': tIME
+    b'tIME': tIME,
+    b'gAMA': gAMA
 }
