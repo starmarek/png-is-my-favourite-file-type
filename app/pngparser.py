@@ -1,6 +1,6 @@
 import logging
 import zlib
-import chunk as ch
+from chunk import CHUNKTYPES, Chunk, IHDR, IDAT, PLTE, temporary_data_change
 
 log = logging.getLogger(__name__)
 
@@ -46,14 +46,14 @@ class PngParser:
 
     def read_chunks(self):
         while True:
-            length = self.read_from_file(ch.Chunk.LENGTH_FIELD_LEN)
+            length = self.read_from_file(Chunk.LENGTH_FIELD_LEN)
             if not length:
                 break
-            type_ = self.read_from_file(ch.Chunk.TYPE_FIELD_LEN)
+            type_ = self.read_from_file(Chunk.TYPE_FIELD_LEN)
             data = self.read_from_file(int.from_bytes(length, 'big'))
-            crc = self.read_from_file(ch.Chunk.CRC_FIELD_LEN)
+            crc = self.read_from_file(Chunk.CRC_FIELD_LEN)
 
-            chunk_class_type = ch.CHUNKTYPES.get(type_, ch.Chunk)
+            chunk_class_type = CHUNKTYPES.get(type_, Chunk)
             chunk = chunk_class_type(length, type_, data, crc)
 
             self.chunks.append(chunk)
@@ -124,7 +124,7 @@ class PngParser:
 
     def assert_png(self):
         ihdr_chunk = self.get_chunk_by_type(b'IHDR')
-        first_idat_occurence = min(idx for idx, val in enumerate(self.chunks) if val.type_ == b'IDAT')
+        first_idat_occurence = min(idx for idx, val in enumerate(self.chunks) if isinstance(val, IDAT))
 
         def assert_ihdr():
             color_type_to_bit_depth_restriction = {
@@ -135,7 +135,7 @@ class PngParser:
                 6: [8, 16]
             }
             assert self.chunks_count.get(b'IHDR') == 1, f"Incorrect number of IHDR chunks: {self.chunks_count.get(b'IHDR')}"
-            assert isinstance(self.chunks[0], ch.IHDR), "IHDR must be the first chunk"
+            assert isinstance(self.chunks[0], IHDR), "IHDR must be the first chunk"
             assert ihdr_chunk.width > 0, "Image width must be > 0"
             assert ihdr_chunk.height > 0, "Image height must be > 0"
             assert ihdr_chunk.bit_depth in [1, 2, 4, 8, 16], f"Wrong bit_depth: {ihdr_chunk.bit_depth}. It must be one of: 1, 2, 4, 8 ,16"
@@ -151,10 +151,10 @@ class PngParser:
         def assert_idat():
             assert self.chunks_count.get(b'IDAT'), f"Incorrect number of IDAT chunks: {self.chunks_count.get(b'IDAT')}"
 
-            last_idat_occurence = max(idx for idx, val in enumerate(self.chunks) if val.type_ == b'IDAT')
+            last_idat_occurence = max(idx for idx, val in enumerate(self.chunks) if isinstance(val, IDAT))
             only_idat_interval = self.chunks[first_idat_occurence : last_idat_occurence + 1]
 
-            assert all(obj.type_ == b'IDAT' for obj in only_idat_interval), "IDAT chunks must be consecutive!"
+            assert all(isinstance(obj, IDAT) for obj in only_idat_interval), "IDAT chunks must be consecutive!"
 
         def assert_plte():
             plte_chunks_number = self.chunks_count.get(b'PLTE')
@@ -204,11 +204,18 @@ class PngParser:
         # apply_pallette replaced indexed pixels in reconstructed_idat_data with corresponding RGB pixels, thus number of bytes per pixel has increased from 1 to 3
         self.bytesPerPixel = 3
 
-    def print_chunks(self, skip_idat_data):
+    def print_chunks(self, skip_idat_data, skip_plte_data):
         for i, chunk in enumerate(self.chunks, 1):
             print(f"\033[1mCHUNK #{i}\033[0m")
-            if chunk.type_ == b"IDAT" and skip_idat_data:
-                tmp = chunk.data; chunk.data = ''
-                print(chunk)
-                chunk.data = tmp; continue
+            if isinstance(chunk, IDAT) and skip_idat_data:
+                with temporary_data_change(chunk, ''):
+                    print(chunk)
+                    continue
+            elif isinstance(chunk, PLTE) and skip_plte_data:
+                with temporary_data_change(chunk, ''):
+                    print(chunk)
+                    continue
             print(chunk)
+        print("\033[4mChunks summary\033[0m:")
+        for key, value in self.chunks_count.items():
+            print (key.decode('utf-8'), ':', value)

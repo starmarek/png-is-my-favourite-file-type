@@ -45,14 +45,14 @@ class CLI:
         if self.verbose:
             log.setLevel(logging.DEBUG)
 
-    def metadata(self, skip_idat_data=False):
+    def metadata(self, skip_idat_data=False, skip_plte_data=False):
         # print metadta
         with PngParser(self.file_name) as png:
             log.debug("Printing metadata")
-            png.print_chunks(skip_idat_data)
+            png.print_chunks(skip_idat_data, skip_plte_data)
 
     def print(self):
-        # print PNG from reconstructed IHDR data
+        # print PNG from reconstructed IDAT data
         with PngParser(self.file_name) as png:
             log.debug("Printing file")
             width = png.get_chunk_by_type(b'IHDR').width
@@ -89,13 +89,9 @@ class CLI:
 if __name__ == '__main__':
     fire.Fire(CLI)
     # TODO:
-    # - Code refactor
     # - Improve debug logs
     # - Improve docstrings
     # - Cleaning file from rubbish and unnecessry
     # - Spectrum diagram
-    # - Print summary of chunks number
     # - Add support for few other chunks
     # - Improve readme
-    # - Improve chunks info print (colors)
-    # - Asserts!
