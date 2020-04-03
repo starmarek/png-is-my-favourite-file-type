@@ -2,6 +2,7 @@ import struct
 import logging
 from itertools import zip_longest
 from contextlib import contextmanager
+import calendar
 
 log = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ class PLTE(Chunk):
             return super().__str__()
 
     def get_parsed_data(self):
-        decoded_pixels = iter([int(byte, 16) for byte in self.data. hex(' ').split()])
+        decoded_pixels = iter([int(byte, 16) for byte in self.data.hex(' ').split()])
         return [pixel_tuple for pixel_tuple in zip_longest(*[decoded_pixels]*3)]
 
 class IDAT(Chunk):
@@ -77,10 +78,26 @@ class IEND(Chunk):
         with temporary_data_change(self, "\'\'"):
             return super().__str__()
 
+class tIME(Chunk):
+    def __init__(self, length, type_, data, crc):
+        super().__init__(length, type_, data, crc)
+        values = struct.unpack('>hbbbbb', self.data)
+        self.year = values[0]
+        self.month = values[1]
+        self.day = values[2]
+        self.hour = values[3]
+        self.minute = values[4]
+        self.second = values[5]
+
+    def __str__(self):
+        data = f"Last modification: {self.day} {calendar.month_abbr[self.month]}. {self.year} {self.hour}:{self.minute}:{self.second}"
+        with temporary_data_change(self, data):
+            return super().__str__()
 
 CHUNKTYPES = {
     b'IHDR': IHDR,
     b'PLTE': PLTE,
     b'IDAT': IDAT,
-    b'IEND': IEND
+    b'IEND': IEND,
+    b'tIME': tIME
 }

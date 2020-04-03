@@ -7,12 +7,11 @@ log = logging.getLogger(__name__)
 PNG_MAGIC_NUMBER = b'\x89PNG\r\n\x1a\n'
 
 class PngParser:
-    def __init__(self, file_name):
+    def __init__(self, file_name, print_mode=False):
         log.debug('Openning file')
         self.file = open(file_name, 'rb')
 
         self.chunks = []
-        self.reconstructed_idat_data = []
         self.chunks_count = {}
 
         log.debug('Checking signature')
@@ -25,12 +24,15 @@ class PngParser:
         log.debug('Asserting PNG data')
         self.assert_png()
 
-        log.debug('Proccessing IDAT')
-        self.process_idat_data()
+        if print_mode:
+            log.debug('Proccessing IDAT')
+            self.reconstructed_idat_data = []
 
-        if self.chunks_count.get(b'PLTE'):
-            log.debug('Applaying pallette')
-            self.apply_pallette()
+            self.process_idat_data()
+
+            if self.chunks_count.get(b'PLTE'):
+                log.debug('Applaying pallette')
+                self.apply_pallette()
 
     def __enter__(self):
         return self
@@ -127,6 +129,7 @@ class PngParser:
         first_idat_occurence = min(idx for idx, val in enumerate(self.chunks) if isinstance(val, IDAT))
 
         def assert_ihdr():
+            log.debug('Assert IHDR')
             color_type_to_bit_depth_restriction = {
                 0: [1, 2, 4, 8, 16],
                 2: [8, 16],
@@ -149,6 +152,7 @@ class PngParser:
             assert ihdr_chunk.interlace_method == 0, f"Unsupported interlace_method: {ihdr_chunk.interlace_method}. Only 0 is supported."
 
         def assert_idat():
+            log.debug('Assert IDAT')
             assert self.chunks_count.get(b'IDAT'), f"Incorrect number of IDAT chunks: {self.chunks_count.get(b'IDAT')}"
 
             last_idat_occurence = max(idx for idx, val in enumerate(self.chunks) if isinstance(val, IDAT))
@@ -158,9 +162,11 @@ class PngParser:
 
         def assert_plte():
             plte_chunks_number = self.chunks_count.get(b'PLTE')
-            if plte_chunks_number == None:
+            if not plte_chunks_number:
                 return
-            elif ihdr_chunk.color_type != 3:
+
+            log.debug('Assert PLTE')
+            if ihdr_chunk.color_type != 3:
                 assert ihdr_chunk.color_type == 2 or ihdr_chunk.color_type == 6, f"PLTE chunk must not appear for color type {ihdr_chunk.color_type}!"
 
             plte_chunk = self.get_chunk_by_type(b'PLTE')
@@ -172,21 +178,24 @@ class PngParser:
             assert int.from_bytes(plte_chunk.length, 'big') % 3 == 0, "PLTE chunk length is not divisible by 3!"
 
         def assert_iend():
+            log.debug('Assert IEND')
             assert self.chunks_count.get(b'IEND') == 1, f"Incorrect number of IEND chunks: {self.chunks_count.get(b'IEND')}"
             assert self.chunks[-1].type_ == b'IEND', "IEND must be the last chunk"
             assert len(self.get_chunk_by_type(b'IEND').data) == 0, "IEND chunk must be empty"
 
-        log.debug('Assert IHDR')
+        def assert_time():
+            time_chunks_number = self.chunks_count.get(b'tIME')
+            if not time_chunks_number:
+                return
+
+            log.debug('Assert tIME')
+            assert time_chunks_number == 1, f"Incorrect number of tIME chunks: {time_chunks_number}"
+
         assert_ihdr()
-
-        log.debug('Assert IDAT')
         assert_idat()
-
-        log.debug('Assert PLTE')
         assert_plte()
-
-        log.debug('Assert IEND')
         assert_iend()
+        assert_time()
 
     def get_chunk_by_type(self, type_):
         try:

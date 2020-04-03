@@ -53,7 +53,7 @@ class CLI:
 
     def print(self):
         # print PNG from reconstructed IDAT data
-        with PngParser(self.file_name) as png:
+        with PngParser(self.file_name, True) as png:
             log.debug("Printing file")
             width = png.get_chunk_by_type(b'IHDR').width
             height = png.get_chunk_by_type(b'IHDR').height
