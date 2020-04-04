@@ -1,14 +1,14 @@
 import logging
 import zlib
 import math
-from chunk import CHUNKTYPES, Chunk, IHDR, IDAT, PLTE, temporary_data_change
+from chunks import CHUNKTYPES, Chunk, IHDR, IDAT, PLTE, temporary_data_change
 
 log = logging.getLogger(__name__)
 
 PNG_MAGIC_NUMBER = b'\x89PNG\r\n\x1a\n'
 
 class PngParser:
-    def __init__(self, file_name, print_mode=False, no_gamma_mode=False):
+    def __init__(self, file_name):
         log.debug('Openning file')
         self.file = open(file_name, 'rb')
 
@@ -25,31 +25,25 @@ class PngParser:
         log.debug('Asserting PNG data')
         self.assert_png()
 
-        if print_mode:
-            log.debug('Proccessing IDAT')
-            self.reconstructed_idat_data = []
-
-            self.process_idat_data()
-
-            if self.assert_existance(b'PLTE'):
-                log.debug('Applaying pallette')
-                self.apply_pallette()
-
-            if self.assert_existance(b'gAMA') and not no_gamma_mode:
-                if self.get_chunk_by_type(b'gAMA').gamma == 0:
-                    log.warning("Skipping gamma normalization because gamma have value 0!")
-                else:
-                    log.debug('Applying gamma normalization')
-                    self.apply_gamma()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, ex_type, value, traceback):
-        if ex_type:
-            print(f'Error {ex_type}: {value}\n{traceback}')
-        log.debug('Closing file')
+    def __del__(self):
         self.file.close()
+
+    def enable_print_mode(self, no_gamma_mode):
+        log.debug('Proccessing IDAT')
+        self.reconstructed_idat_data = []
+
+        self.process_idat_data()
+
+        if self.assert_existance(b'PLTE'):
+            log.debug('Applaying pallette')
+            self.apply_pallette()
+
+        if self.assert_existance(b'gAMA') and not no_gamma_mode:
+            if self.get_chunk_by_type(b'gAMA').gamma == 0:
+                log.warning("Skipping gamma normalization because gamma have value 0!")
+            else:
+                log.debug('Applying gamma normalization')
+                self.apply_gamma()
 
     def read_chunks(self):
         while True:
@@ -282,3 +276,27 @@ class PngParser:
         print("\033[4mChunks summary\033[0m:")
         for key, value in self.chunks_count.items():
             print(key.decode('utf-8'), ':', value)
+
+    def create_clean_png(self, new_file_name):
+        def get_ancilary_chunks():
+            ancilary_chunks = [
+                b'IHDR',
+                b'IDAT',
+                b'IEND'
+            ]
+            if self.get_chunk_by_type(b'IHDR').color_type == 3:
+                ancilary_chunks.insert(1, b'PLTE')
+            return ancilary_chunks
+
+        ancilary_chunks = get_ancilary_chunks()
+        file_handler = open(new_file_name, 'wb')
+        file_handler.write(PNG_MAGIC_NUMBER)
+
+        for chunk in self.chunks:
+            if chunk.type_ in ancilary_chunks:
+                file_handler.write(chunk.length)
+                file_handler.write(chunk.type_)
+                file_handler.write(chunk.data)
+                file_handler.write(chunk.crc)
+
+        file_handler.close()

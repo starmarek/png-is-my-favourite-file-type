@@ -45,54 +45,62 @@ class CLI:
         if self.verbose:
             log.setLevel(logging.DEBUG)
 
+        self.png = PngParser(self.file_name)
+
+    def __del__(self):
+        plt.show()
+
     def metadata(self, idat=False, plte=False):
         # print metadta
-        with PngParser(self.file_name) as png:
-            log.debug("Printing metadata")
-            png.print_chunks(idat, plte)
+        log.debug("Printing metadata")
+        self.png.print_chunks(idat, plte)
 
     def print(self, no_gamma=False):
         # print PNG from reconstructed IDAT data
-        with PngParser(self.file_name, print_mode=True, no_gamma_mode=no_gamma) as png:
-            log.debug("Printing file")
-            width = png.get_chunk_by_type(b'IHDR').width
-            height = png.get_chunk_by_type(b'IHDR').height
-            if png.bytesPerPixel == 1:
-                # greyscale
-                plt.imshow(np.array(png.reconstructed_idat_data).reshape((height, width)), cmap='gray', vmin=0, vmax=255)
-                plt.show()
-            elif png.bytesPerPixel == 2:
-                # greyscale with alpha channel
-                png.reconstructed_idat_data = np.array(png.reconstructed_idat_data).reshape((height, width, png.bytesPerPixel))
-                grayscale = png.reconstructed_idat_data[:, :, 0]
-                alpha = png.reconstructed_idat_data[:, :, 1]
-                rgb_img = np.dstack((grayscale, grayscale, grayscale, alpha))
-                plt.imshow(rgb_img)
-                plt.show()
-            else:
-                # truecolor, truecolor with alpha channel, pallette
-                plt.imshow(np.array(png.reconstructed_idat_data).reshape((height, width, png.bytesPerPixel)))
-                plt.show()
+        log.debug("Printing file")
+        self.png.enable_print_mode(no_gamma)
+        width = self.png.get_chunk_by_type(b'IHDR').width
+        height = self.png.get_chunk_by_type(b'IHDR').height
+        if self.png.bytesPerPixel == 1:
+            # greyscale
+            plt.imshow(np.array(png.reconstructed_idat_data).reshape((height, width)), cmap='gray', vmin=0, vmax=255)
+        elif self.png.bytesPerPixel == 2:
+            # greyscale with alpha channel
+            self.png.reconstructed_idat_data = np.array(self.png.reconstructed_idat_data).reshape((height, width, self.png.bytesPerPixel))
+            grayscale = self.png.reconstructed_idat_data[:, :, 0]
+            alpha = self.png.reconstructed_idat_data[:, :, 1]
+            rgb_img = np.dstack((grayscale, grayscale, grayscale, alpha))
+            plt.imshow(rgb_img)
+        else:
+            # truecolor, truecolor with alpha channel, pallette
+            plt.imshow(np.array(self.png.reconstructed_idat_data).reshape((height, width, self.png.bytesPerPixel)))
 
     def spectrum(self):
         # print spectrum diagram via FFT
         pass
 
-    def clean(self):
-        # remove unnecessary data from PNG and print it
-        pass
+    def clean(self, output_file='new.png'):
+        # remove unnecessary data from PNG
+        self.png.create_clean_png(output_file)
 
-    def full_service(self):
-        # every step from above
-        pass
+    def fullservice(self, output_file='new.png', no_gamma=False, idat=False, plte=False):
+        # every step from above + comparison
+        plt.subplot(121)
+        self.metadata(idat, plte)
+        self.print(no_gamma)
+        self.clean(output_file)
+
+        print('=' * 100)
+
+        plt.subplot(122)
+        new_png = CLI(output_file)
+        new_png.metadata(idat, plte)
+        new_png.print(no_gamma)
 
 if __name__ == '__main__':
     fire.Fire(CLI)
     # TODO:
     # - Improve debug logs
     # - Improve docstrings
-    # - Cleaning file from rubbish and unnecessry
     # - Spectrum diagram
-    # - Add support for few other chunks
     # - Improve readme
-    # - Add assert existance function
