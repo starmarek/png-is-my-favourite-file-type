@@ -3,6 +3,7 @@ import logging
 from itertools import zip_longest
 from contextlib import contextmanager
 import calendar
+from tabulate import tabulate
 
 log = logging.getLogger(__name__)
 
@@ -28,8 +29,19 @@ class Chunk:
         self.crc = crc
 
     def __str__(self):
+        try:
+            if b'Xt' in self.type_:
+                # bytes containing text data. We check if chunk type matches one of text-containing chunks -> iTXt tEXt zTXt
+                data = self.data.decode('utf-8')
+            else:
+                # bytes containing hex data
+                data = ' '.join(str(byte) for byte in self.data.hex(' ').split())
+        except:
+            # some other __str__ method has manipulated the self.data and we want to leave it as it is
+            data = self.data
+
         return (f"Length: {int.from_bytes(self.length, 'big')}\nType: {self.type_.decode('utf-8')}\n"
-                    f"Data: {self.data}\nCRC: {self.crc.hex(' ')}\n")
+                    f"Data: {data}\nCRC: {self.crc.hex(' ')}\n")
 
 class IHDR(Chunk):
     def __init__(self, length, type_, data, crc):
@@ -108,11 +120,41 @@ class gAMA(Chunk):
         with temporary_data_change(self, self.gamma):
             return super().__str__()
 
+class cHRM(Chunk):
+    def __init__(self, length, type_, data, crc):
+        super().__init__(length, type_, data, crc)
+
+        values = struct.unpack('>iiiiiiii', self.data)
+        # PNG specification says, that stored values are multiplied by 100000
+        self.WPx = values[0] / 100000
+        self.WPy = values[1] / 100000
+        self.WPz = 1 - self.WPx - self.WPy
+        self.Rx = values[2] / 100000
+        self.Ry = values[3] / 100000
+        self.Rz = 1 - self.Rx - self.Ry
+        self.Gx = values[4] / 100000
+        self.Gy = values[5] / 100000
+        self.Gz = 1 - self.Gx - self.Gy
+        self.Bx = values[6] / 100000
+        self.By = values[7] / 100000
+        self.Bz = 1 - self.Bx - self.By
+
+    def __str__(self):
+        table = tabulate([['x', self.Rx, self.Gx, self.Bx, self.WPx],
+                          ['y', self.Ry, self.Gy, self.By, self.WPy],
+                          ['z', self.WPz, self.Gz, self.Bz, self.WPz]],
+                          headers=['', 'Red', 'Green', 'Blue', 'WhitePoint'],
+                          tablefmt='orgtbl'
+                        )
+        with temporary_data_change(self, f'\n{table}'):
+            return super().__str__()
+
 CHUNKTYPES = {
     b'IHDR': IHDR,
     b'PLTE': PLTE,
     b'IDAT': IDAT,
     b'IEND': IEND,
     b'tIME': tIME,
-    b'gAMA': gAMA
+    b'gAMA': gAMA,
+    b'cHRM': cHRM,
 }

@@ -12,12 +12,12 @@ class PngParser:
         log.debug('Openning file')
         self.file = open(file_name, 'rb')
 
-        self.chunks = []
-        self.chunks_count = {}
-
         log.debug('Checking signature')
         if self.file.read(len(PNG_MAGIC_NUMBER)) != PNG_MAGIC_NUMBER:
             raise Exception(f'{self.file.name} is not a PNG!')
+
+        self.chunks = []
+        self.chunks_count = {}
 
         log.debug('Reading Chunks')
         self.read_chunks()
@@ -31,15 +31,15 @@ class PngParser:
 
             self.process_idat_data()
 
-            if self.chunks_count.get(b'PLTE'):
+            if self.assert_existance(b'PLTE'):
                 log.debug('Applaying pallette')
                 self.apply_pallette()
 
-            if self.chunks_count.get(b'gAMA') and not no_gamma_mode:
+            if self.assert_existance(b'gAMA') and not no_gamma_mode:
                 if self.get_chunk_by_type(b'gAMA').gamma == 0:
-                    log.warning("Skipping gamma normalization because it has value 0!")
+                    log.warning("Skipping gamma normalization because gamma have value 0!")
                 else:
-                    log.debug('Applaying gamma normalization')
+                    log.debug('Applying gamma normalization')
                     self.apply_gamma()
 
     def __enter__(self):
@@ -51,17 +51,14 @@ class PngParser:
         log.debug('Closing file')
         self.file.close()
 
-    def read_from_file(self, amount_of_bytes_to_read):
-        return self.file.read(amount_of_bytes_to_read)
-
     def read_chunks(self):
         while True:
-            length = self.read_from_file(Chunk.LENGTH_FIELD_LEN)
+            length = self.file.read(Chunk.LENGTH_FIELD_LEN)
             if not length:
                 break
-            type_ = self.read_from_file(Chunk.TYPE_FIELD_LEN)
-            data = self.read_from_file(int.from_bytes(length, 'big'))
-            crc = self.read_from_file(Chunk.CRC_FIELD_LEN)
+            type_ = self.file.read(Chunk.TYPE_FIELD_LEN)
+            data = self.file.read(int.from_bytes(length, 'big'))
+            crc = self.file.read(Chunk.CRC_FIELD_LEN)
 
             chunk_class_type = CHUNKTYPES.get(type_, Chunk)
             chunk = chunk_class_type(length, type_, data, crc)
@@ -211,15 +208,33 @@ class PngParser:
 
             assert gama_chunks_number == 1, f"Incorrect number of gAMA chunks: {gama_chunks_number}"
             assert first_idat_occurence > gama_index, "gAMA must be placed before IDAT!"
-            if self.get_chunk_by_type(b'PLTE'):
+            if self.assert_existance(b'PLTE'):
                 assert self.chunks.index(self.get_chunk_by_type(b'PLTE')) > gama_index, "gAMA must be placed before PLTE!"
 
+        def assert_chrm():
+            chrm_chunks_number = self.chunks_count.get(b'cHRM')
+            if not chrm_chunks_number:
+                return
+
+            log.debug('Assert cHRM')
+            chrm_chunk = self.get_chunk_by_type(b'cHRM')
+            chrm_index = self.chunks.index(chrm_chunk)
+
+            assert chrm_chunks_number == 1, f"Incorrect number of cHRM chunks: {chrm_chunks_number}"
+            assert first_idat_occurence > chrm_index, "cHRM must be placed before IDAT!"
+            if self.assert_existance(b'PLTE'):
+                assert self.chunks.index(self.get_chunk_by_type(b'PLTE')) > chrm_index, "cHRM must be placed before PLTE!"
+
         assert_ihdr()
-        assert_idat()
+        assert_chrm()
+        assert_gama()
         assert_plte()
+        assert_idat()
         assert_iend()
         assert_time()
-        assert_gama()
+
+    def assert_existance(self, type_to_assert):
+        return True if any(chunk.type_ == type_to_assert for chunk in self.chunks) else False
 
     def get_chunk_by_type(self, type_):
         try:
@@ -266,4 +281,4 @@ class PngParser:
             print(chunk)
         print("\033[4mChunks summary\033[0m:")
         for key, value in self.chunks_count.items():
-            print (key.decode('utf-8'), ':', value)
+            print(key.decode('utf-8'), ':', value)
