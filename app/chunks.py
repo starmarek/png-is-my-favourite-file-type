@@ -3,7 +3,13 @@ import logging
 from itertools import zip_longest
 from contextlib import contextmanager
 import calendar
-from tabulate import tabulate
+
+try:
+    from tabulate import tabulate
+except ModuleNotFoundError:
+    traceback.print_exc()
+    print("\033[1;33mBefore you will debug, please delete 'venv' dir from project root and try again.\033[0m")
+    exit(1)
 
 log = logging.getLogger(__name__)
 
