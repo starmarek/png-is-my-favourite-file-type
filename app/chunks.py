@@ -9,6 +9,18 @@ log = logging.getLogger(__name__)
 
 @contextmanager
 def temporary_data_change(object_to_change, tmp_data):
+    """It is used to temporarly switch 'data' attribute of chunks.
+
+    Every chunk inherits __str__ method of base Chunk class. Thanks to that, command line prinitng
+    is consistent, fairly simple and every chunk is printed IN THE SAME WAY. Nevertheless, chunks contain different information in theirs data field.
+    Thats why sometimes we would like to print it in an individual manner.
+
+    Thanks to this function, chunks can temporarly change their data field when executing their own overloaded __str__ method.
+
+    Args:
+        object_to_change: This must be a Chunk-based object whose data will be switched
+        tmp_data: Data to be switched
+    """
     original_data = getattr(object_to_change, 'data')
     setattr(object_to_change, 'data', tmp_data)
     try:
@@ -17,6 +29,12 @@ def temporary_data_change(object_to_change, tmp_data):
         setattr(object_to_change, 'data', original_data)
 
 class Chunk:
+    """Base representation of PNG's chunk
+
+    Setup the attributes and define printing standard.
+    """
+    # Constants below indicates how many bytes to read from a file. Data field is not included because it's not a constant.
+    # DATA_FIELD_LEN is a value of self.length.
     LENGTH_FIELD_LEN = 4
     TYPE_FIELD_LEN = 4
     CRC_FIELD_LEN = 4
@@ -31,13 +49,13 @@ class Chunk:
     def __str__(self):
         try:
             if b'Xt' in self.type_:
-                # bytes containing text data. We check if chunk type matches one of text-containing chunks -> iTXt tEXt zTXt
+                # Bytes containing text data. We check if chunk type matches one of text-containing chunks -> iTXt tEXt zTXt
                 data = self.data.decode('utf-8')
             else:
-                # bytes containing hex data
+                # Bytes containing hex data
                 data = ' '.join(str(byte) for byte in self.data.hex(' ').split())
         except:
-            # some other __str__ method has manipulated the self.data and we want to leave it as it is
+            # Some other __str__ method has manipulated the self.data and we want to leave it as it is
             data = self.data
 
         return (f"Length: {int.from_bytes(self.length, 'big')}\nType: {self.type_.decode('utf-8')}\n"
@@ -68,14 +86,20 @@ class PLTE(Chunk):
 
     def __str__(self):
         if self.data:
+            # Data is not empty. That means that user have used the --plte flag and data should be printed in a decoded manner
             data = self.get_parsed_data()
         else:
+            # Default behavior -> data is skipped, because often it is too long
             data = self.data
         with temporary_data_change(self, data):
             return super().__str__()
 
     def get_parsed_data(self):
+        """Decode 'data' field of PLTE chunk and return it as a list of RGB pixel tuples
+        """
         decoded_pixels = iter([int(byte, 16) for byte in self.data.hex(' ').split()])
+
+        # zip_longest pack pixel chunks into 3-element RGB tuples using unpacked iterator
         return [pixel_tuple for pixel_tuple in zip_longest(*[decoded_pixels]*3)]
 
 class IDAT(Chunk):
@@ -88,6 +112,7 @@ class IEND(Chunk):
 
     def __str__(self):
         with temporary_data_change(self, "\'\'"):
+            # Explicitly print quotes to emphasise that data field is empty. If we would simply use str.decode('utf-8'), quotes wouldn't appear.
             return super().__str__()
 
 class tIME(Chunk):
@@ -149,6 +174,12 @@ class cHRM(Chunk):
         with temporary_data_change(self, f'\n{table}'):
             return super().__str__()
 
+"""Points raw chunk type to desired class type
+
+When PNG is during reading/parsing process, newly read chunk must be somehow initialized whith appropriete class.
+This dictionary is used as a look-up table by PNG-reading function.
+If during parse process, incoming chunk will not be matched with any chunk from this dict -> then this chunk will be initialized with a base class -> Chunk.
+"""
 CHUNKTYPES = {
     b'IHDR': IHDR,
     b'PLTE': PLTE,

@@ -28,6 +28,8 @@ class CLI:
     COMMANDS:
      - metadata
      - print
+     - clean
+     - fullservice
 
     For more, please read README.
 
@@ -48,22 +50,26 @@ class CLI:
         self.png = PngParser(self.file_name)
 
     def __del__(self):
+        # Show image if it has been loaded to memory by plt.imshow()
+        # This is the very last thing in the program execution
         plt.show()
 
     def metadata(self, idat=False, plte=False):
-        # print metadta
+        """Print PNG's metadata in good-looking way
+        """
         log.debug("Printing metadata")
         self.png.print_chunks(idat, plte)
 
     def print(self, no_gamma=False):
-        # print PNG from reconstructed IDAT data
+        """Print PNG from reconstructed IDAT data using matplotlib
+        """
         log.debug("Printing file")
         self.png.enable_print_mode(no_gamma)
         width = self.png.get_chunk_by_type(b'IHDR').width
         height = self.png.get_chunk_by_type(b'IHDR').height
         if self.png.bytesPerPixel == 1:
             # greyscale
-            plt.imshow(np.array(png.reconstructed_idat_data).reshape((height, width)), cmap='gray', vmin=0, vmax=255)
+            plt.imshow(np.array(self.png.reconstructed_idat_data).reshape((height, width)), cmap='gray', vmin=0, vmax=255)
         elif self.png.bytesPerPixel == 2:
             # greyscale with alpha channel
             self.png.reconstructed_idat_data = np.array(self.png.reconstructed_idat_data).reshape((height, width, self.png.bytesPerPixel))
@@ -80,12 +86,29 @@ class CLI:
         pass
 
     def clean(self, output_file='new.png'):
-        # remove unnecessary data from PNG
+        """Create brand new file with chunks that are TOTTALLY NECESSARY. Other chunks are discarded
+        """
         self.png.create_clean_png(output_file)
 
     def fullservice(self, output_file='new.png', no_gamma=False, idat=False, plte=False):
-        # every step from above + comparison
+        """Launch all functionality of package in controlled and automated way
+
+        It might be somehow called 'presentation mode'.
+
+        1. print info about png
+        2. create new png with only critical chunks in it
+        3. also print info about this new png
+        4. summarize chunks that were deleted during process
+        5. print png's next to each other
+        """
+        def print_chunks_difference(dict1, dict2):
+            chunks_difference = set(dict1.items()) ^ set(dict2.items())
+            print("\033[4mRemoved chunks\033[0m:")
+            for dict_tuple in chunks_difference:
+                print(dict_tuple[0].decode('utf-8'), ':', dict_tuple[1])
+
         plt.subplot(121)
+        plt.title("Before cleanup", fontweight='bold', fontsize=20)
         self.metadata(idat, plte)
         self.print(no_gamma)
         self.clean(output_file)
@@ -93,14 +116,16 @@ class CLI:
         print('=' * 100)
 
         plt.subplot(122)
-        new_png = CLI(output_file)
-        new_png.metadata(idat, plte)
-        new_png.print(no_gamma)
+        plt.title("After cleanup", fontweight='bold', fontsize=20)
+        new_entrypoint = CLI(output_file)
+        new_entrypoint.metadata(idat, plte)
+        new_entrypoint.print(no_gamma)
+
+        print('=' * 100)
+
+        print_chunks_difference(self.png.chunks_count, new_entrypoint.png.chunks_count)
 
 if __name__ == '__main__':
     fire.Fire(CLI)
     # TODO:
-    # - Improve debug logs
-    # - Improve docstrings
     # - Spectrum diagram
-    # - Improve readme
