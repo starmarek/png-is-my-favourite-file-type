@@ -1,5 +1,6 @@
 import struct
 import logging
+import traceback
 from itertools import zip_longest
 from contextlib import contextmanager
 import calendar
