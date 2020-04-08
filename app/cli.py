@@ -3,6 +3,7 @@ import traceback
 from pngparser import PngParser
 
 try:
+    import cv2
     import fire
     import matplotlib.pyplot as plt
     import numpy as np
@@ -82,8 +83,42 @@ class CLI:
             plt.imshow(np.array(self.png.reconstructed_idat_data).reshape((height, width, self.png.bytesPerPixel)))
 
     def spectrum(self):
-        # print spectrum diagram via FFT
-        pass
+        """ Print FFT of an image (shows magnitude and phase)
+            Compare original image and inverted fft of original image (checks transformation)
+        """
+        img=cv2.imread(self.file_name,0)
+        fourier = np.fft.fft2(img) 
+        fourier_shifted = np.fft.fftshift(fourier) 
+    
+        fourier_mag = np.asarray(20*np.log10(np.abs(fourier_shifted)) ,dtype=np.uint8) 
+        fourier_phase = np.asarray(np.angle(fourier_shifted),dtype=np.uint8)
+
+        f1 = plt.figure(1) # show source image and FFT 
+        
+        plt.subplot(131),plt.imshow(img, cmap = 'gray') 
+        plt.title('Input Image'), plt.xticks([]), plt.yticks([])
+            
+        plt.subplot(132),plt.imshow(fourier_mag, cmap = 'gray')
+        plt.title('FFT Magnitude'), plt.xticks([]), plt.yticks([])
+            
+        plt.subplot(133),plt.imshow(fourier_phase, cmap = 'gray')
+        plt.title('FFT Phase'), plt.xticks([]), plt.yticks([])        
+            
+        plt.subplot(132),plt.imshow(fourier_mag, cmap = 'gray')
+        plt.title('FFT Magnitude'), plt.xticks([]), plt.yticks([])
+            
+        plt.subplot(133),plt.imshow(fourier_phase, cmap = 'gray')
+        plt.title('FFT Phase'), plt.xticks([]), plt.yticks([])
+
+        f2 = plt.figure(2) #comapare source image and inverted fft 
+        fourier_inverted=np.fft.ifft2(fourier)
+
+        plt.subplot(121),plt.imshow(img, cmap = 'gray') 
+        plt.title('Input Image'), plt.xticks([]), plt.yticks([])
+            
+        plt.subplot(122),plt.imshow( np.asarray(fourier_inverted, dtype=np.uint8), cmap = 'gray')
+        plt.title('Inverted Image'), plt.xticks([]), plt.yticks([])
+        plt.show()
 
     def clean(self, output_file='new.png'):
         """Create brand new file with chunks that are TOTTALLY NECESSARY. Other chunks are discarded
@@ -112,7 +147,7 @@ class CLI:
         self.metadata(idat, plte)
         self.print(no_gamma)
         self.clean(output_file)
-
+        self.spectrum()
         print('=' * 100)
 
         plt.subplot(122)

@@ -2,3 +2,4 @@ fire
 matplotlib
 numpy
 tabulate
+opencv-python
