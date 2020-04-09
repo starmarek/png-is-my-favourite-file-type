@@ -73,6 +73,7 @@ class CLI:
             plt.imshow(np.array(self.png.reconstructed_idat_data).reshape((height, width)), cmap='gray', vmin=0, vmax=255)
         elif self.png.bytesPerPixel == 2:
             # greyscale with alpha channel
+            
             self.png.reconstructed_idat_data = np.array(self.png.reconstructed_idat_data).reshape((height, width, self.png.bytesPerPixel))
             grayscale = self.png.reconstructed_idat_data[:, :, 0]
             alpha = self.png.reconstructed_idat_data[:, :, 1]
@@ -94,19 +95,13 @@ class CLI:
         fourier_phase = np.asarray(np.angle(fourier_shifted),dtype=np.uint8)
 
         f1 = plt.figure(1) # show source image and FFT 
-        
         plt.subplot(131),plt.imshow(img, cmap = 'gray') 
+        
         plt.title('Input Image'), plt.xticks([]), plt.yticks([])
-            
+        
         plt.subplot(132),plt.imshow(fourier_mag, cmap = 'gray')
         plt.title('FFT Magnitude'), plt.xticks([]), plt.yticks([])
-            
-        plt.subplot(133),plt.imshow(fourier_phase, cmap = 'gray')
-        plt.title('FFT Phase'), plt.xticks([]), plt.yticks([])        
-            
-        plt.subplot(132),plt.imshow(fourier_mag, cmap = 'gray')
-        plt.title('FFT Magnitude'), plt.xticks([]), plt.yticks([])
-            
+        
         plt.subplot(133),plt.imshow(fourier_phase, cmap = 'gray')
         plt.title('FFT Phase'), plt.xticks([]), plt.yticks([])
 
@@ -115,10 +110,10 @@ class CLI:
 
         plt.subplot(121),plt.imshow(img, cmap = 'gray') 
         plt.title('Input Image'), plt.xticks([]), plt.yticks([])
-            
         plt.subplot(122),plt.imshow( np.asarray(fourier_inverted, dtype=np.uint8), cmap = 'gray')
         plt.title('Inverted Image'), plt.xticks([]), plt.yticks([])
-        plt.show()
+
+
 
     def clean(self, output_file='new.png'):
         """Create brand new file with chunks that are TOTTALLY NECESSARY. Other chunks are discarded
@@ -142,6 +137,7 @@ class CLI:
             for dict_tuple in chunks_difference:
                 print(dict_tuple[0].decode('utf-8'), ':', dict_tuple[1])
 
+        f3 = plt.figure(3)
         plt.subplot(121)
         plt.title("Before cleanup", fontweight='bold', fontsize=20)
         self.metadata(idat, plte)
@@ -149,7 +145,7 @@ class CLI:
         self.clean(output_file)
         self.spectrum()
         print('=' * 100)
-
+        f3 = plt.figure(3)
         plt.subplot(122)
         plt.title("After cleanup", fontweight='bold', fontsize=20)
         new_entrypoint = CLI(output_file)
