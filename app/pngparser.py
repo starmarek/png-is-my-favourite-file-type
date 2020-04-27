@@ -5,78 +5,48 @@ from chunks import CHUNKTYPES, Chunk, IHDR, IDAT, PLTE, temporary_data_change
 
 log = logging.getLogger(__name__)
 
-# This a header of every PNG file.
-PNG_MAGIC_NUMBER = b'\x89PNG\r\n\x1a\n'
-
 class PngParser:
-    """Parse PNG. Holds parsed PNG data and manage it.
+    """Parse PNG
 
-    During initialization: PNG is read, asserted, and its data is distributed among Chunk based objects.
-    Png parser DON'T decode IDAT data during initialization. Programmer must explicitly call eneble_print_mode method to achieve this.
-    This is due to optimalization.
-    Pngparser is also capeable of prinitng decoded chunks, and creating brand new PNG (which excludes unnecessary chunks).
+    PNG is read, asserted, and its data is distributed among Chunk based objects.
+    Next up, IDAT chunk is processed. If there is a PLTE chunk, pallette is also aplied.
+    Finally gamma normalization is aplied if gAMA chunk is present.
     """
-    def __init__(self, file_name):
-        log.debug('Openning file')
-        self.file = open(file_name, 'rb')
-
+    def __init__(self, png, no_gamma_mode):
+        self.png = png
         log.debug('Checking signature')
-        if self.file.read(len(PNG_MAGIC_NUMBER)) != PNG_MAGIC_NUMBER:
-            raise Exception(f'{self.file.name} is not a PNG!')
-
-        self.chunks = []
-        self.chunks_count = {}
+        if png.file.read(len(png.PNG_MAGIC_NUMBER)) != png.PNG_MAGIC_NUMBER:
+            raise Exception(f'{png.file.name} is not a PNG!')
 
         self.read_chunks()
         self.assert_png()
-
-    def __del__(self):
-        self.file.close()
-
-    def enable_print_mode(self, no_gamma_mode):
-        """Decode idat, and apply effects to pixels
-
-        Method creates array of pixels to be printed by matplotlib.
-        If PLTE chunk was specified -> Pallette is applied to IDAT pixels.
-        If gAMA chunk was specified -> Gamma normalization is applied to IDAT pixels unless no_gamma_mode is specified.
-
-        Arg:
-            no_gamma_mode(bool): If set to True, gamma normalization is skipped.
-        """
-        log.debug('Proccessing IDAT')
-        self.reconstructed_idat_data = []
-
         self.process_idat_data()
-
-        if self.assert_existance(b'PLTE'):
-            log.debug('Applaying pallette')
+        if self.png.assert_existance(b'PLTE'):
             self.apply_pallette()
-
-        if self.assert_existance(b'gAMA') and not no_gamma_mode:
-            if self.get_chunk_by_type(b'gAMA').gamma == 0:
+        if self.png.assert_existance(b'gAMA') and not no_gamma_mode:
+            if self.png.get_chunk_by_type(b'gAMA').gamma == 0:
                 log.warning("Skipping gamma normalization because gamma have value 0!")
             else:
-                log.debug('Applying gamma normalization')
                 self.apply_gamma()
 
     def read_chunks(self):
         log.debug('Reading Chunks')
         while True:
-            length = self.file.read(Chunk.LENGTH_FIELD_LEN)
+            length = self.png.file.read(Chunk.LENGTH_FIELD_LEN)
             # If length is empty, we have reached and of the file
             if not length:
                 break
-            type_ = self.file.read(Chunk.TYPE_FIELD_LEN)
-            data = self.file.read(int.from_bytes(length, 'big'))
-            crc = self.file.read(Chunk.CRC_FIELD_LEN)
+            type_ = self.png.file.read(Chunk.TYPE_FIELD_LEN)
+            data = self.png.file.read(int.from_bytes(length, 'big'))
+            crc = self.png.file.read(Chunk.CRC_FIELD_LEN)
 
             # Initialize new chunk with class that CHUNKTYPES is pointing to. If new chunk
             # is not mentioned in CHUNKTYPES, Chunk base class is initialized.
             chunk_class_type = CHUNKTYPES.get(type_, Chunk)
             chunk = chunk_class_type(length, type_, data, crc)
 
-            self.chunks.append(chunk)
-            self.chunks_count[type_] = self.chunks_count.get(type_, 0) + 1
+            self.png.chunks.append(chunk)
+            self.png.chunks_count[type_] = self.png.chunks_count.get(type_, 0) + 1
 
     def process_idat_data(self):
         """Decompress and defilter IDAT data
@@ -85,6 +55,7 @@ class PngParser:
         https://pyokagan.name/blog/2019-10-14-png/
         Solid explanation is also available there.
         """
+        log.debug('Proccessing IDAT')
         # Byte per pixel is a measure of chunks within the pixel. E.g. RGB (type 2) has three chunks -> (R, G, B)
         # RGBA (type 6) has four chunks -> (R, G, B, A).
         color_type_to_bytes_per_pixel_ratio = {
@@ -95,17 +66,17 @@ class PngParser:
             6: 4
         }
 
-        IDAT_data = b''.join(chunk.data for chunk in self.get_all_chunks_by_type(b'IDAT'))
+        IDAT_data = b''.join(chunk.data for chunk in self.png.get_all_chunks_by_type(b'IDAT'))
         # DECOMPRESSING
         IDAT_data = zlib.decompress(IDAT_data)
 
-        self.bytesPerPixel = color_type_to_bytes_per_pixel_ratio.get(self.get_chunk_by_type(b'IHDR').color_type)
-        width = self.get_chunk_by_type(b'IHDR').width
-        height = self.get_chunk_by_type(b'IHDR').height
-        expected_IDAT_data_len = height * (1 + width * self.bytesPerPixel)
+        self.png.bytesPerPixel = color_type_to_bytes_per_pixel_ratio.get(self.png.get_chunk_by_type(b'IHDR').color_type)
+        width = self.png.get_chunk_by_type(b'IHDR').width
+        height = self.png.get_chunk_by_type(b'IHDR').height
+        expected_IDAT_data_len = height * (1 + width * self.png.bytesPerPixel)
 
         assert expected_IDAT_data_len == len(IDAT_data), "Image's decompressed IDAT data is not as expected. Corrupted image"
-        stride = width * self.bytesPerPixel
+        stride = width * self.png.bytesPerPixel
 
         # DEFINING DEFILTER FUNCTIONS
         def paeth_predictor(a, b, c):
@@ -122,13 +93,13 @@ class PngParser:
             return Pr
 
         def recon_a(r, c):
-            return self.reconstructed_idat_data[r * stride + c - self.bytesPerPixel] if c >= self.bytesPerPixel else 0
+            return self.png.reconstructed_idat_data[r * stride + c - self.png.bytesPerPixel] if c >= self.png.bytesPerPixel else 0
 
         def recon_b(r, c):
-            return self.reconstructed_idat_data[(r-1) * stride + c] if r > 0 else 0
+            return self.png.reconstructed_idat_data[(r-1) * stride + c] if r > 0 else 0
 
         def recon_c(r, c):
-            return self.reconstructed_idat_data[(r-1) * stride + c - self.bytesPerPixel] if r > 0 and c >= self.bytesPerPixel else 0
+            return self.png.reconstructed_idat_data[(r-1) * stride + c - self.png.bytesPerPixel] if r > 0 and c >= self.png.bytesPerPixel else 0
 
         # DEFILTER
         i = 0
@@ -150,7 +121,7 @@ class PngParser:
                     recon_x = filt_x + paeth_predictor(recon_a(r, c), recon_b(r, c), recon_c(r, c))
                 else:
                     raise Exception('unknown filter type: ' + str(filter_type))
-                self.reconstructed_idat_data.append(recon_x & 0xff) # truncation to byte
+                self.png.reconstructed_idat_data.append(recon_x & 0xff) # truncation to byte
 
     def assert_png(self):
         """ Asserts PNG data according to PNG specification
@@ -160,8 +131,8 @@ class PngParser:
         https://www.w3.org/TR/2003/REC-PNG-20031110/ (newer version)
         """
         log.debug('Asserting PNG data')
-        ihdr_chunk = self.get_chunk_by_type(b'IHDR')
-        first_idat_occurence = min(idx for idx, val in enumerate(self.chunks) if isinstance(val, IDAT))
+        ihdr_chunk = self.png.get_chunk_by_type(b'IHDR')
+        first_idat_occurence = min(idx for idx, val in enumerate(self.png.chunks) if isinstance(val, IDAT))
 
         def assert_ihdr():
             log.debug('Assert IHDR')
@@ -172,8 +143,8 @@ class PngParser:
                 4: [8, 16],
                 6: [8, 16]
             }
-            assert self.chunks_count.get(b'IHDR') == 1, f"Incorrect number of IHDR chunks: {self.chunks_count.get(b'IHDR')}"
-            assert isinstance(self.chunks[0], IHDR), "IHDR must be the first chunk"
+            assert self.png.chunks_count.get(b'IHDR') == 1, f"Incorrect number of IHDR chunks: {self.png.chunks_count.get(b'IHDR')}"
+            assert isinstance(self.png.chunks[0], IHDR), "IHDR must be the first chunk"
             assert ihdr_chunk.width > 0, "Image width must be > 0"
             assert ihdr_chunk.height > 0, "Image height must be > 0"
             assert ihdr_chunk.bit_depth in [1, 2, 4, 8, 16], f"Wrong bit_depth: {ihdr_chunk.bit_depth}. It must be one of: 1, 2, 4, 8 ,16"
@@ -189,15 +160,15 @@ class PngParser:
 
         def assert_idat():
             log.debug('Assert IDAT')
-            assert self.chunks_count.get(b'IDAT'), f"Incorrect number of IDAT chunks: {self.chunks_count.get(b'IDAT')}"
+            assert self.png.chunks_count.get(b'IDAT'), f"Incorrect number of IDAT chunks: {self.png.chunks_count.get(b'IDAT')}"
 
-            last_idat_occurence = max(idx for idx, val in enumerate(self.chunks) if isinstance(val, IDAT))
-            only_idat_interval = self.chunks[first_idat_occurence : last_idat_occurence + 1]
+            last_idat_occurence = max(idx for idx, val in enumerate(self.png.chunks) if isinstance(val, IDAT))
+            only_idat_interval = self.png.chunks[first_idat_occurence : last_idat_occurence + 1]
 
             assert all(isinstance(obj, IDAT) for obj in only_idat_interval), "IDAT chunks must be consecutive!"
 
         def assert_plte():
-            plte_chunks_number = self.chunks_count.get(b'PLTE')
+            plte_chunks_number = self.png.chunks_count.get(b'PLTE')
             if not plte_chunks_number:
                 return
 
@@ -205,8 +176,8 @@ class PngParser:
             if ihdr_chunk.color_type != 3:
                 assert ihdr_chunk.color_type == 2 or ihdr_chunk.color_type == 6, f"PLTE chunk must not appear for color type {ihdr_chunk.color_type}!"
 
-            plte_chunk = self.get_chunk_by_type(b'PLTE')
-            plte_index = self.chunks.index(plte_chunk)
+            plte_chunk = self.png.get_chunk_by_type(b'PLTE')
+            plte_index = self.png.chunks.index(plte_chunk)
 
             assert plte_chunks_number == 1, f"Incorrect number of PLTE chunks: {plte_chunks_number}!"
             assert first_idat_occurence > plte_index, "PLTE must be placed before IDAT!"
@@ -215,12 +186,12 @@ class PngParser:
 
         def assert_iend():
             log.debug('Assert IEND')
-            assert self.chunks_count.get(b'IEND') == 1, f"Incorrect number of IEND chunks: {self.chunks_count.get(b'IEND')}"
-            assert self.chunks[-1].type_ == b'IEND', "IEND must be the last chunk"
-            assert len(self.get_chunk_by_type(b'IEND').data) == 0, "IEND chunk must be empty"
+            assert self.png.chunks_count.get(b'IEND') == 1, f"Incorrect number of IEND chunks: {self.png.chunks_count.get(b'IEND')}"
+            assert self.png.chunks[-1].type_ == b'IEND', "IEND must be the last chunk"
+            assert len(self.png.get_chunk_by_type(b'IEND').data) == 0, "IEND chunk must be empty"
 
         def assert_time():
-            time_chunks_number = self.chunks_count.get(b'tIME')
+            time_chunks_number = self.png.chunks_count.get(b'tIME')
             if not time_chunks_number:
                 return
 
@@ -228,32 +199,32 @@ class PngParser:
             assert time_chunks_number == 1, f"Incorrect number of tIME chunks: {time_chunks_number}"
 
         def assert_gama():
-            gama_chunks_number = self.chunks_count.get(b'gAMA')
+            gama_chunks_number = self.png.chunks_count.get(b'gAMA')
             if not gama_chunks_number:
                 return
 
             log.debug('Assert gAMA')
-            gama_chunk = self.get_chunk_by_type(b'gAMA')
-            gama_index = self.chunks.index(gama_chunk)
+            gama_chunk = self.png.get_chunk_by_type(b'gAMA')
+            gama_index = self.png.chunks.index(gama_chunk)
 
             assert gama_chunks_number == 1, f"Incorrect number of gAMA chunks: {gama_chunks_number}"
             assert first_idat_occurence > gama_index, "gAMA must be placed before IDAT!"
-            if self.assert_existance(b'PLTE'):
-                assert self.chunks.index(self.get_chunk_by_type(b'PLTE')) > gama_index, "gAMA must be placed before PLTE!"
+            if self.png.assert_existance(b'PLTE'):
+                assert self.png.chunks.index(self.get_chunk_by_type(b'PLTE')) > gama_index, "gAMA must be placed before PLTE!"
 
         def assert_chrm():
-            chrm_chunks_number = self.chunks_count.get(b'cHRM')
+            chrm_chunks_number = self.png.chunks_count.get(b'cHRM')
             if not chrm_chunks_number:
                 return
 
             log.debug('Assert cHRM')
-            chrm_chunk = self.get_chunk_by_type(b'cHRM')
-            chrm_index = self.chunks.index(chrm_chunk)
+            chrm_chunk = self.png.get_chunk_by_type(b'cHRM')
+            chrm_index = self.png.chunks.index(chrm_chunk)
 
             assert chrm_chunks_number == 1, f"Incorrect number of cHRM chunks: {chrm_chunks_number}"
             assert first_idat_occurence > chrm_index, "cHRM must be placed before IDAT!"
-            if self.assert_existance(b'PLTE'):
-                assert self.chunks.index(self.get_chunk_by_type(b'PLTE')) > chrm_index, "cHRM must be placed before PLTE!"
+            if self.png.assert_existance(b'PLTE'):
+                assert self.png.chunks.index(self.png.get_chunk_by_type(b'PLTE')) > chrm_index, "cHRM must be placed before PLTE!"
 
         assert_ihdr()
         assert_chrm()
@@ -263,37 +234,27 @@ class PngParser:
         assert_iend()
         assert_time()
 
-    def assert_existance(self, type_to_assert):
-        return True if any(chunk.type_ == type_to_assert for chunk in self.chunks) else False
-
-    def get_chunk_by_type(self, type_):
-        try:
-            return [chunk for chunk in self.chunks if chunk.type_ == type_][0]
-        except IndexError:
-            return None
-
-    def get_all_chunks_by_type(self, type_):
-        return [chunk for chunk in self.chunks if chunk.type_ == type_]
-
     def apply_pallette(self):
         """Replace indexed pixels in parsed IDAT with according pallette RGB values
         """
-        pallette = self.get_chunk_by_type(b'PLTE').get_parsed_data()
+        log.debug('Applaying pallette')
+        pallette = self.png.get_chunk_by_type(b'PLTE').get_parsed_data()
         # In next step: take indexed_pixel (index of pallette entry) from parsed IDAT. Find pallette entry which has this list index, and replace them.
         # If still confused -> please google how indexed colors work
-        self.reconstructed_idat_data = [pixel for indexed_pixel in self.reconstructed_idat_data for pixel in pallette[indexed_pixel]]
+        self.png.reconstructed_idat_data = [pixel for indexed_pixel in self.png.reconstructed_idat_data for pixel in pallette[indexed_pixel]]
 
         # apply_pallette replaced indexed pixels in reconstructed_idat_data with corresponding RGB pixels, thus number of bytes per pixel has increased from 1 to 3
-        self.bytesPerPixel = 3
+        self.png.bytesPerPixel = 3
 
     def apply_gamma(self):
         """Apply gamma normalization, to parsed IDAT pixels
         """
-        gamma = self.get_chunk_by_type(b'gAMA').gamma
+        log.debug('Applying gamma normalization')
+        gamma = self.png.get_chunk_by_type(b'gAMA').gamma
 
         # This is basically the definition of bith depth.
         # 2^bit_depth - 1 -> 255 for 8-bit | 31 for 5-bit etc.
-        max_colors_in_sample = 2 ** self.get_chunk_by_type(b'IHDR').bit_depth - 1
+        max_colors_in_sample = 2 ** self.png.get_chunk_by_type(b'IHDR').bit_depth - 1
         invGamma = 1.0 / gamma
 
         # Steps to apply gamma:
@@ -302,53 +263,4 @@ class PngParser:
         # 3. Reverse normalize output to [0, max_colors_in_sample]
         # 4. Finally do: floor(output + 0.5)
         # https://www.w3.org/TR/2003/REC-PNG-20031110/#13Decoder-gamma-handling
-        self.reconstructed_idat_data = [math.floor((((pixel / max_colors_in_sample) ** invGamma) * max_colors_in_sample) + 0.5) for pixel in self.reconstructed_idat_data]
-
-    def print_chunks(self, get_idat_data, get_plte_data):
-        """
-        Args:
-            get_idat_data(bool): If set to true, IDAT data is printed to console
-            get_plte_data(bool): If set to true, PLTE data is printed to console
-        """
-        for i, chunk in enumerate(self.chunks, 1):
-            print(f"\033[1mCHUNK #{i}\033[0m")
-            # Default behavior is to enter if statements and replace data with empty strings
-            # Data in those chunks is generally long and makes chunk summary less readable
-            if isinstance(chunk, IDAT) and not get_idat_data:
-                with temporary_data_change(chunk, ''):
-                    print(chunk)
-                    continue
-            elif isinstance(chunk, PLTE) and not get_plte_data:
-                with temporary_data_change(chunk, ''):
-                    print(chunk)
-                    continue
-            print(chunk)
-        print("\033[4mChunks summary\033[0m:")
-        for key, value in self.chunks_count.items():
-            print(key.decode('utf-8'), ':', value)
-
-    def create_clean_png(self, new_file_name):
-        """Creates brand new file with ONLY critical chunks in it
-        """
-        def get_ancilary_chunks():
-            ancilary_chunks = [
-                b'IHDR',
-                b'IDAT',
-                b'IEND'
-            ]
-            if self.get_chunk_by_type(b'IHDR').color_type == 3:
-                ancilary_chunks.insert(1, b'PLTE')
-            return ancilary_chunks
-
-        ancilary_chunks = get_ancilary_chunks()
-        file_handler = open(new_file_name, 'wb')
-        file_handler.write(PNG_MAGIC_NUMBER)
-
-        for chunk in self.chunks:
-            if chunk.type_ in ancilary_chunks:
-                file_handler.write(chunk.length)
-                file_handler.write(chunk.type_)
-                file_handler.write(chunk.data)
-                file_handler.write(chunk.crc)
-
-        file_handler.close()
+        self.png.reconstructed_idat_data = [math.floor((((pixel / max_colors_in_sample) ** invGamma) * max_colors_in_sample) + 0.5) for pixel in self.png.reconstructed_idat_data]
