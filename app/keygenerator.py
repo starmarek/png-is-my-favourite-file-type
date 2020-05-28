@@ -1,11 +1,11 @@
-import math, random
+import random, sys, os
 
 class KeyGenerator:
     def __init__(self, keysize):
         self.keysize=keysize
+        self.primesize = keysize/2
 
     def isPrime(self, num):
-        # Returns True if num is a prime number.
         if num % 2 == 0 or num < 2:
             return False # Rabin-Miller doesn't work on even integers.
         if num == 3:
@@ -13,14 +13,12 @@ class KeyGenerator:
         s = num - 1
         t = 0
         while s % 2 == 0:
-        # Keep halving s until it is odd (and use t
-        # to count how many times we halve s):
             s = s // 2
             t += 1
-        for trials in range(5): # Try to falsify num's primality 5 times.
+        for trials in range(5): 
             a = random.randrange(2, num - 1)
             v = pow(a, s, num)
-            if v != 1: # This test does not apply if v is 1.
+            if v != 1: 
                  i = 0
                  while v != (num - 1):
                     if i == t - 1:
@@ -44,7 +42,7 @@ class KeyGenerator:
 
     def generateLargePrime(self):
         while True:
-            num = random.randrange(2**(self.keysize-1), 2**(self.keysize))
+            num = random.randrange(2**(self.primesize-1), 2**(self.primesize))
             if self.isPrime(num):
                 return num
     
@@ -53,33 +51,59 @@ class KeyGenerator:
             return a 
         else: 
             return self.gcd(b,a%b) 
+ 
 
-    
+    def findModInverse(self, a, m):
+        
+        if self.gcd(a, m) != 1:
+            return None  # No mod inverse if a & m aren't relatively prime.
+
+        u1, u2, u3 = 1, 0, a
+        v1, v2, v3 = 0, 1, m
+        while v3 != 0:
+            q = u3 // v3 
+            v1, v2, v3, u1, u2, u3 = (u1 - q * v1), (u2 - q * v2), (u3 - q * v3), v1, v2, v3
+        return u1 % m
+
+
     def generateKeys(self):
-        p = 0
-        q = 0
-        # Step 1: Create two prime numbers, p and q. Calculate n = p * q:
-        while p == q:
-            p = self.generateLargePrime()
-            q = self.generateLargePrime()
-        n = p * q
-        phi = (p-1)*(q-1)
-        
+
         while True:
-        # Keep trying random numbers for e until one is valid:
-            e = random.randrange(2 ** (self.keysize - 1), 2 ** (self.keysize))
-            if self.gcd(e, phi) == 1:
-                break
+            p = 0
+            q = 0
+            while p == q or ((p-1)*(q-1)).bit_length() != self.keysize:
+                p = self.generateLargePrime()
+                q = self.generateLargePrime()
         
-        d = self.modinv(e, phi)
-        publicKey=(e,n)
-        privateKey=(d,n)
-        return (publicKey, privateKey)
+        
+            phi = (p-1)*(q-1) 
+            n = p * q
+
+            while True:
+                e = random.randrange(2 ** (self.keysize - 1), 2 ** (self.keysize))
+        
+                if self.gcd(e, phi) == 1:
+                    break
+        
+            d = self.modinv(e, phi)
+            #d = self.findModInverse(e, (p - 1) * (q - 1))
+        
+            publicKey=(e,n)
+            privateKey=(d,n)
+            
+            if e.bit_length() == self.keysize and d.bit_length() == self.keysize:
+                #print(e.bit_length())
+                #print(d.bit_length())
+                #print(n.bit_length())
+                return (publicKey, privateKey)
 
 
 #TESTS
 #x = KeyGenerator(1024)
-#y=x.generateLargePrime()
-#print(y)
-#print(x.isPrime(y))
-#print(x.generateKeys())
+#s = x.generateKeys()
+#public
+#print(s[0][0].bit_length())
+#print(s[0][1].bit_length())
+# private
+#print(s[1][0].bit_length())
+#print(s[1][1].bit_length())
