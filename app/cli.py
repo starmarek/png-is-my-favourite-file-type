@@ -1,7 +1,8 @@
 import logging
 import traceback
 from pngparser import PngParser
-from png import Png
+from pngImage import Png
+from rsa import RSA
 
 try:
     import cv2
@@ -162,6 +163,10 @@ class CLI:
         print('=' * 100)
 
         print_chunks_difference(original_png.chunks_count, self.png.chunks_count)
+
+    def rsa(self, key_size=1024):
+        rsa = RSA(self.png, key_size)
+        rsa.ECB_encrypt_decompressed_data()
 
 if __name__ == '__main__':
     fire.Fire(CLI)

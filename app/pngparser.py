@@ -66,9 +66,8 @@ class PngParser:
             6: 4
         }
 
-        IDAT_data = b''.join(chunk.data for chunk in self.png.get_all_chunks_by_type(b'IDAT'))
         # DECOMPRESSING
-        IDAT_data = zlib.decompress(IDAT_data)
+        IDAT_data = self.png.get_decompressed_idat_data()
 
         self.png.bytesPerPixel = color_type_to_bytes_per_pixel_ratio.get(self.png.get_chunk_by_type(b'IHDR').color_type)
         width = self.png.get_chunk_by_type(b'IHDR').width

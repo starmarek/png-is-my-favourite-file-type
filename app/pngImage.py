@@ -1,4 +1,5 @@
 import logging
+import zlib
 from chunks import IDAT, PLTE, temporary_data_change
 from pngparser import PngParser
 
@@ -7,7 +8,10 @@ log = logging.getLogger(__name__)
 class Png:
     def __init__(self, file_name):
         log.debug('Openning file')
-        self.file = open(file_name, 'rb')
+        try:
+            self.file = open(file_name, 'rb')
+        except IOError as e:
+            raise e
 
         self.PNG_MAGIC_NUMBER = b'\x89PNG\r\n\x1a\n'
         self.chunks = []
@@ -17,7 +21,11 @@ class Png:
 
     def __del__(self):
         log.debug('Closing file')
-        self.file.close()
+        try:
+            self.file.close()
+        except AttributeError:
+            pass
+            
     
     def assert_existance(self, type_to_assert):
         return True if any(chunk.type_ == type_to_assert for chunk in self.chunks) else False
@@ -30,6 +38,10 @@ class Png:
 
     def get_all_chunks_by_type(self, type_):
         return [chunk for chunk in self.chunks if chunk.type_ == type_]
+
+    def get_decompressed_idat_data(self):
+        IDAT_data = b''.join(chunk.data for chunk in self.get_all_chunks_by_type(b'IDAT'))
+        return zlib.decompress(IDAT_data)
 
     def print_chunks(self, get_idat_data, get_plte_data):
         """
