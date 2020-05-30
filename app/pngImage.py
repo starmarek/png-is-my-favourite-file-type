@@ -17,6 +17,7 @@ class Png:
         self.chunks = []
         self.chunks_count = {}
         self.reconstructed_idat_data = []
+        self.after_iend_data = bytes()
         self.bytesPerPixel = 0
 
     def __del__(self):

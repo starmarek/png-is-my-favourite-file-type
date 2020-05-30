@@ -1,9 +1,11 @@
 from keygenerator import KeyGenerator
 from collections import deque
 from pngImage import Png
+import logging
+
+log = logging.getLogger(__name__)
 
 try:
-    import gmpy2 as g
     import png
 except ModuleNotFoundError:
     traceback.print_exc()
@@ -11,48 +13,118 @@ except ModuleNotFoundError:
     exit(1)
 
 class RSA:
-    def __init__(self, png, key_size):
-        self.png = png
-        assert png.get_chunk_by_type(b'IHDR').color_type != 3, "Our RSA do not support pallette"
+    def __init__(self, key_size):
+        log.info("Initializing RSA module")
         self.public_key, self.private_key = KeyGenerator(key_size).generateKeys()
-        self.encrypted_png_path = "encrypted.png"
-        
-        # chunk should be a bit smaller than key length in order for RSA to work properly => math stuff
+        self.key_size = key_size
+
+        # chunk that goes to encryption should be a bit smaller than key length in order for RSA to work properly => math stuff
         self.amount_of_bytes_to_substract_from_chunk_size = 1
-        self.encrypted_chunk_size_in_bytes = key_size // 8 - self.amount_of_bytes_to_substract_from_chunk_size
+        self.encrypted_chunk_size_in_bytes_substracted = key_size // 8 - self.amount_of_bytes_to_substract_from_chunk_size
 
-    def ECB_encrypt_decompressed_data(self):
+        # on the other hand - chunk that has been already encrypted has the lenght of key itself
+        self.encrypted_chunk_size_in_bytes = key_size // 8
+
+    def ECB_encrypt(self, data):
+        log.info(f"Performing ECB RSA encryption using {self.key_size} bit public key")
+
         cipher_data = []
+        decrypted_data = []
+        after_iend_data_embedded = []
+        self.original_data_len = len(data)
 
-        for i in range(0, len(self.png.reconstructed_idat_data), self.encrypted_chunk_size_in_bytes):
-            chunk_to_encrypt_hex = bytes(self.png.reconstructed_idat_data[i: i + self.encrypted_chunk_size_in_bytes])
+        for i in range(0, len(data), self.encrypted_chunk_size_in_bytes_substracted):
+            chunk_to_encrypt_hex = bytes(data[i: i + self.encrypted_chunk_size_in_bytes_substracted])
 
-            cipher_int = g.powmod(int.from_bytes(chunk_to_encrypt_hex, 'big'), self.public_key[0], self.public_key[1])
+            cipher_int = pow(int.from_bytes(chunk_to_encrypt_hex, 'big'), self.public_key[0], self.public_key[1])
 
-            cipher_hex = int(cipher_int).to_bytes(self.encrypted_chunk_size_in_bytes + self.amount_of_bytes_to_substract_from_chunk_size, 'big')
+            cipher_hex = cipher_int.to_bytes(self.encrypted_chunk_size_in_bytes, 'big')
 
-            for i in range(self.encrypted_chunk_size_in_bytes):
+            for i in range(self.encrypted_chunk_size_in_bytes_substracted):
                 cipher_data.append(cipher_hex[i])
+            after_iend_data_embedded.append(cipher_hex[-1])
+        cipher_data.append(after_iend_data_embedded.pop())
 
-        self.create_encrypted_png(cipher_data)
+        log.info("Done")
 
-    def create_encrypted_png(self, cipher_data):
-        idat_data, after_iend_data = self.extract_after_iend_pixels(cipher_data)
-        bytes_row_width = self.png.get_chunk_by_type(b'IHDR').width * self.png.bytesPerPixel
-        if self.png.bytesPerPixel == 1:
-            png_writer = png.Writer(self.png.get_chunk_by_type(b'IHDR').width, self.png.get_chunk_by_type(b'IHDR').height, greyscale=True)
-        elif self.png.bytesPerPixel == 2:
-            png_writer = png.Writer(self.png.get_chunk_by_type(b'IHDR').width, self.png.get_chunk_by_type(b'IHDR').height, greyscale=True, alpha=True)
-        elif self.png.bytesPerPixel == 3:
-            png_writer = png.Writer(self.png.get_chunk_by_type(b'IHDR').width, self.png.get_chunk_by_type(b'IHDR').height, greyscale=False)
-        elif self.png.bytesPerPixel == 4:
-            png_writer = png.Writer(self.png.get_chunk_by_type(b'IHDR').width, self.png.get_chunk_by_type(b'IHDR').height, greyscale=False, alpha=True)            
+        return cipher_data, after_iend_data_embedded
 
-        f = open(self.encrypted_png_path, 'wb')
-        pixels_grouped_by_rows = [idat_data[i: i + bytes_row_width] for i in range(0, len(idat_data), bytes_row_width)]
+    def ECB_decrypt(self, data, after_iend_data):
+        log.info(f"Performing ECB RSA decryption using {self.key_size} bit private key")
+
+        after_iend_data = deque(after_iend_data)
+        data_to_decrypt = []
+        decrypted_data = []
+
+        for i in range(0, len(data), self.encrypted_chunk_size_in_bytes_substracted):
+            data_to_decrypt.extend(data[i:i + self.encrypted_chunk_size_in_bytes_substracted])
+            data_to_decrypt.append(after_iend_data.popleft())
+        data_to_decrypt.extend(after_iend_data)
+
+        for i in range(0, len(data_to_decrypt), self.encrypted_chunk_size_in_bytes):
+            chunk_to_decrypt_hex = bytes(data_to_decrypt[i: i + self.encrypted_chunk_size_in_bytes])
+
+            decrypted_int = pow(int.from_bytes(chunk_to_decrypt_hex, 'big'), self.private_key[0], self.private_key[1])
+
+            # We don't know how long was the last original chunk (no matter what, chunks after encryption have fixd key-length size, so extra bytes could have been added), 
+            # so below, before creating decrpyted_hex of fixed size we check if adding it to decrpted_data wouldn't exceed the original_data_len
+            # If it does, we know that the length of last chunk was smaller and we can retrieve it's length
+            if len(decrypted_data) + self.encrypted_chunk_size_in_bytes_substracted > self.original_data_len:
+                # last original chunk
+                decrypted_hex_len = self.original_data_len - len(decrypted_data)
+            else:
+                # standard encryption_RSA_chunk length
+                decrypted_hex_len = self.encrypted_chunk_size_in_bytes_substracted
+
+            decrypted_hex = decrypted_int.to_bytes(decrypted_hex_len, 'big')
+
+            for byte in decrypted_hex:
+                decrypted_data.append(byte)
+
+        log.info("Done")
+
+        return decrypted_data
+
+    def create_decrypted_png(self, decrpted_data, bytes_per_pixel, width, height, decrypted_png_path):
+        log.info(f"Creating decrypted file '{decrypted_png_path}'")
+
+        png_writer = self.get_png_writer(width, height, bytes_per_pixel)
+        bytes_row_width = width * bytes_per_pixel
+        pixels_grouped_by_rows = [decrpted_data[i: i + bytes_row_width] for i in range(0, len(decrpted_data), bytes_row_width)]
+
+        f = open(decrypted_png_path, 'wb')
         png_writer.write(f, pixels_grouped_by_rows)
+        f.close()
+
+        log.info("Done")
+
+    def create_encrypted_png(self, cipher_data, bytes_per_pixel, width, height, encrypted_png_path, after_iend_data_embedded):
+        log.info(f"Creating encrpyted file '{encrypted_png_path}'")
+
+        idat_data, after_iend_data = self.extract_after_iend_pixels(cipher_data)
+        png_writer = self.get_png_writer(width, height, bytes_per_pixel)
+        bytes_row_width = width * bytes_per_pixel
+        pixels_grouped_by_rows = [idat_data[i: i + bytes_row_width] for i in range(0, len(idat_data), bytes_row_width)]
+
+        f = open(encrypted_png_path, 'wb')
+        png_writer.write(f, pixels_grouped_by_rows)
+        f.write(bytes(after_iend_data_embedded))
         f.write(bytes(after_iend_data))
         f.close()
+
+        log.info("Done")
+
+    def get_png_writer(self, width, height, bytes_per_pixel):
+        if bytes_per_pixel == 1:
+            png_writer = png.Writer(width, height, greyscale=True)
+        elif bytes_per_pixel == 2:
+            png_writer = png.Writer(width, height, greyscale=True, alpha=True)
+        elif bytes_per_pixel == 3:
+            png_writer = png.Writer(width, height, greyscale=False)
+        elif bytes_per_pixel == 4:
+            png_writer = png.Writer(width, height, greyscale=False, alpha=True)
+
+        return png_writer
 
     def extract_after_iend_pixels(self, cipher_data):
         """
@@ -64,8 +136,7 @@ class RSA:
         cipher_data = deque(cipher_data)
         idat_data = []
         after_iend_data = []
-
-        for i in range(len(self.png.reconstructed_idat_data)):
+        for i in range(self.original_data_len):
             idat_data.append(cipher_data.popleft())
         for i in range(len(cipher_data)):
             after_iend_data.append(cipher_data.popleft())

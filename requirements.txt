@@ -3,5 +3,4 @@ matplotlib
 numpy
 tabulate
 opencv-python
-gmpy2
 pypng

@@ -34,8 +34,6 @@ class PngParser:
         while True:
             length = self.png.file.read(Chunk.LENGTH_FIELD_LEN)
             # If length is empty, we have reached and of the file
-            if not length:
-                break
             type_ = self.png.file.read(Chunk.TYPE_FIELD_LEN)
             data = self.png.file.read(int.from_bytes(length, 'big'))
             crc = self.png.file.read(Chunk.CRC_FIELD_LEN)
@@ -47,6 +45,14 @@ class PngParser:
 
             self.png.chunks.append(chunk)
             self.png.chunks_count[type_] = self.png.chunks_count.get(type_, 0) + 1
+            if type_ == b"IEND":
+                break
+
+        while True:
+            bytes_read = self.png.file.read(2)
+            if not bytes_read:
+                break
+            self.png.after_iend_data += bytes_read
 
     def process_idat_data(self):
         """Decompress and defilter IDAT data

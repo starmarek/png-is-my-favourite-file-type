@@ -19,7 +19,6 @@ fi
 
 declare -a packages_to_assert=("python3-tk"
                                "python3.8-venv"
-                               "libmpc-dev"
                                )
 for package in "${packages_to_assert[@]}"; do
     dpkg -s "$package" >/dev/null 2>&1 || {
