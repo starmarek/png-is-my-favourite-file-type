@@ -4,3 +4,5 @@ numpy
 tabulate
 opencv-python
 pypng
+pycryptodome
+pycryptodomex

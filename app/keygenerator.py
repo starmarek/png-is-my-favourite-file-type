@@ -1,9 +1,15 @@
 import random, sys, os
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto import Random
+from Crypto.PublicKey import RSA
 
 class KeyGenerator:
     def __init__(self, keysize):
         self.keysize=keysize
         self.primesize = keysize/2
+        self.n=0
+        self.e=0
+        self.d=0
 
     def isPrime(self, num):
         if num % 2 == 0 or num < 2:
@@ -78,6 +84,7 @@ class KeyGenerator:
         
             phi = (p-1)*(q-1) 
             n = p * q
+            self.n = n
 
             while True:
                 e = random.randrange(2 ** (self.keysize - 1), 2 ** (self.keysize))
@@ -85,25 +92,46 @@ class KeyGenerator:
                 if self.gcd(e, phi) == 1:
                     break
         
+            self.e = e
             d = self.modinv(e, phi)
-            #d = self.findModInverse(e, (p - 1) * (q - 1))
+            self.d = d
         
             publicKey=(e,n)
             privateKey=(d,n)
-            
+
+            #publicKey=(n,e)
+            #privateKey=(n,d)
+            #allKeys = (n, e , d)
+
             if e.bit_length() == self.keysize and d.bit_length() == self.keysize:
                 #print(e.bit_length())
                 #print(d.bit_length())
                 #print(n.bit_length())
                 return (publicKey, privateKey)
 
+    def encrypt_with_crypto(self):
+        key = RSA.construct((self.n, self.e))
+        print(RSA.construct((self.n, self.e)))
+        cipher = PKCS1_OAEP.new(key)    
+        return cipher.encrypt('data'.encode("utf-8"))
+
+    def decrypt_with_crypto(self, message):
+        key = RSA.construct((self.n, self.e, self.d))
+        cipher = PKCS1_OAEP.new(key)
+        return cipher.decrypt(message)
+
 
 #TESTS
-#x = KeyGenerator(1024)
-#s = x.generateKeys()
+x = KeyGenerator(1024)
+
+s = x.generateKeys()
+message = "pies".encode("utf-8")
 #public
-#print(s[0][0].bit_length())
+z = x.encrypt_with_crypto()
+#print(z)
 #print(s[0][1].bit_length())
+
+print(x.decrypt_with_crypto(z).decode("utf-8"))
 # private
 #print(s[1][0].bit_length())
 #print(s[1][1].bit_length())
