@@ -1,7 +1,9 @@
 import random, sys, os
-from Crypto.Cipher import PKCS1_OAEP
-from Crypto import Random
-from Crypto.PublicKey import RSA
+
+from Cryptodome.Cipher import PKCS1_OAEP
+from Cryptodome import Random
+from Cryptodome.PublicKey import RSA
+
 
 class KeyGenerator:
     def __init__(self, keysize):
@@ -89,7 +91,7 @@ class KeyGenerator:
             while True:
                 e = random.randrange(2 ** (self.keysize - 1), 2 ** (self.keysize))
         
-                if self.gcd(e, phi) == 1:
+                if self.gcd(e, phi) == 1 and e < phi:
                     break
         
             self.e = e
@@ -109,29 +111,33 @@ class KeyGenerator:
                 #print(n.bit_length())
                 return (publicKey, privateKey)
 
-    def encrypt_with_crypto(self):
-        key = RSA.construct((self.n, self.e))
-        print(RSA.construct((self.n, self.e)))
-        cipher = PKCS1_OAEP.new(key)    
-        return cipher.encrypt('data'.encode("utf-8"))
+#     def encrypt_with_crypto(self, message):
+#         print(self.e.bit_length())
+#         #self.privkey=RSA.generate(1024)
+#         key = RSA.construct((self.n, self.e))
+#         #print(RSA.construct(key))
+#         cipher = PKCS1_OAEP.new(key)    
+#         return cipher.encrypt(message)
 
-    def decrypt_with_crypto(self, message):
-        key = RSA.construct((self.n, self.e, self.d))
-        cipher = PKCS1_OAEP.new(key)
-        return cipher.decrypt(message)
+#     def decrypt_with_crypto(self, message):
+#         key = RSA.construct((self.n, self.e, self.d))
+#         cipher = PKCS1_OAEP.new(key)
+#         return cipher.decrypt(message)
 
 
-#TESTS
-x = KeyGenerator(1024)
+# #TESTS
+# x = KeyGenerator(1024)
 
-s = x.generateKeys()
-message = "pies".encode("utf-8")
-#public
-z = x.encrypt_with_crypto()
-#print(z)
-#print(s[0][1].bit_length())
+# s = x.generateKeys()
+# message = "piesssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss".encode("utf-8")
+# #public
+# print(len(message))
+# print(message)
+# z = x.encrypt_with_crypto(message)
+# print(len(z))
+# #print(s[0][1].bit_length())
 
-print(x.decrypt_with_crypto(z).decode("utf-8"))
-# private
-#print(s[1][0].bit_length())
-#print(s[1][1].bit_length())
+# print(len(x.decrypt_with_crypto(z).decode("utf-8")))
+# # private
+# #print(s[1][0].bit_length())
+# #print(s[1][1].bit_length())

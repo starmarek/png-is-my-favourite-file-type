@@ -2,7 +2,7 @@ import logging
 import traceback
 from pngparser import PngParser
 from pngImage import Png
-from rsa import RSA
+from rsa import RSAClass
 
 try:
     import cv2
@@ -166,12 +166,14 @@ class CLI:
 
     def rsa(self, key_size=1024, encrypted_file_path="encrypted.png", decrypted_file_path="decrypted.png", mode="ECB"):
         assert self.png.get_chunk_by_type(b'IHDR').color_type != 3, "RSA module do not support pallette"
-        rsa = RSA(key_size)
+        rsa = RSAClass(key_size)
 
         if mode == "ECB":
             cipher, after_iend_data_embedded = rsa.ECB_encrypt(self.png.reconstructed_idat_data)
         elif mode == "CBC":
             cipher, after_iend_data_embedded = rsa.CBC_encrypt(self.png.reconstructed_idat_data)
+        elif mode == "Crypto":
+            cipher, after_iend_data_embedded = rsa.Crypto_encrypt(self.png.reconstructed_idat_data)
         else:
             log.error("Unkown cipher method. Quitting...")
             exit(1)
@@ -186,6 +188,8 @@ class CLI:
             decrypted_data = rsa.ECB_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
         elif mode == "CBC":
             decrypted_data = rsa.CBC_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
+        elif mode == "Crypto":
+            decrypted_data = rsa.Crypto_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
         rsa.create_decrypted_png(decrypted_data, new_png.bytesPerPixel, new_png.get_chunk_by_type(b"IHDR").width,
                                     new_png.get_chunk_by_type(b"IHDR").height, decrypted_file_path)
 

@@ -3,6 +3,10 @@ from collections import deque
 from pngImage import Png
 import logging
 import random
+from Cryptodome.Cipher import PKCS1_OAEP
+from Cryptodome import Random
+from Cryptodome.PublicKey import RSA
+#import Cryptodome
 
 log = logging.getLogger(__name__)
 
@@ -13,7 +17,7 @@ except ModuleNotFoundError:
     print("\033[1;33mBefore you will debug, please delete 'venv' dir from project root and try again.\033[0m")
     exit(1)
 
-class RSA:
+class RSAClass:
     def __init__(self, key_size):
         log.info("Initializing RSA module")
         self.public_key, self.private_key = KeyGenerator(key_size).generateKeys()
@@ -22,15 +26,16 @@ class RSA:
         # chunk that goes to encryption should be a bit smaller than key length in order for RSA to work properly => math stuff
         self.amount_of_bytes_to_substract_from_chunk_size = 1
         self.encrypted_chunk_size_in_bytes_substracted = key_size // 8 - self.amount_of_bytes_to_substract_from_chunk_size
-
+        
+        self.encrypted_chunk_size_in_bytes_substracted2 = key_size // 16 - self.amount_of_bytes_to_substract_from_chunk_size
         # on the other hand - chunk that has been already encrypted has the lenght of key itself
         self.encrypted_chunk_size_in_bytes = key_size // 8
+        self.encrypted_chunk_size_in_bytes2 = key_size // 16
 
     def ECB_encrypt(self, data):
         log.info(f"Performing ECB RSA encryption using {self.key_size} bit public key")
 
         cipher_data = []
-        decrypted_data = []
         after_iend_data_embedded = []
         self.original_data_len = len(data)
 
@@ -197,6 +202,61 @@ class RSA:
             prev = int.from_bytes(chunk_to_decrypt_hex, 'big')
 
             decrypted_hex = xor.to_bytes(decrypted_hex_len, 'big')
+
+            for byte in decrypted_hex:
+                decrypted_data.append(byte)
+
+        return decrypted_data
+
+    def Crypto_encrypt(self, data):
+        log.info(f"Performing Crypto Package RSA encryption using {self.key_size} bit public key")
+
+        cipher_data = []
+        after_iend_data_embedded = []
+        self.original_data_len = len(data)
+        key = RSA.construct((self.public_key[1] , self.public_key[0]))
+        cipher = PKCS1_OAEP.new(key)    
+
+        for i in range(0, len(data), self.encrypted_chunk_size_in_bytes_substracted2):
+            chunk_to_encrypt_hex = bytes(data[i: i + self.encrypted_chunk_size_in_bytes_substracted2])
+
+            #cipher_int = cipher.encrypt(int.from_bytes(chunk_to_encrypt_hex, 'big'))
+            cipher_hex = cipher.encrypt(chunk_to_encrypt_hex)
+            #cipher_int = 
+            #cipher_hex = cipher_int.to_bytes(self.encrypted_chunk_size_in_bytes, 'big')
+
+            for i in range(self.encrypted_chunk_size_in_bytes_substracted2):
+                cipher_data.append(cipher_hex[i])
+            after_iend_data_embedded.append(cipher_hex[-1])
+        cipher_data.append(after_iend_data_embedded.pop())
+
+        return cipher_data, after_iend_data_embedded
+
+    def Crypto_decrypt(self, data, after_iend_data):
+        log.info(f"Performing Crypto RSA decryption using {self.key_size} bit private key")
+
+        key =  RSA.construct((self.private_key[1], self.public_key[0], self.private_key[0]))
+        cipher = PKCS1_OAEP.new(key)
+        data_to_decrypt = self.concentate_data_to_decrypt(data, deque(after_iend_data))
+        decrypted_data = []
+
+        for i in range(0, len(data_to_decrypt), self.encrypted_chunk_size_in_bytes_substracted2):
+            chunk_to_decrypt_hex = bytes(data_to_decrypt[i: i + self.encrypted_chunk_size_in_bytes])
+
+            decrypted_int = cipher.decrypt((chunk_to_decrypt_hex, 'big'))
+            #decrypted_int = pow(int.from_bytes(chunk_to_decrypt_hex, 'big'), self.private_key[0], self.private_key[1])
+
+            # We don't know how long was the last original chunk (no matter what, chunks after encryption have fixd key-length size, so extra bytes could have been added), 
+            # so below, before creating decrpyted_hex of fixed size we check if adding it to decrpted_data wouldn't exceed the original_data_len
+            # If it does, we know that the length of last chunk was smaller and we can retrieve it's length
+            if len(decrypted_data) + self.encrypted_chunk_size_in_bytes_substracted2 > self.original_data_len:
+                # last original chunk
+                decrypted_hex_len = self.original_data_len - len(decrypted_data)
+            else:
+                # standard encryption_RSA_chunk length
+                decrypted_hex_len = self.encrypted_chunk_size_in_bytes_substracted2
+
+            decrypted_hex = decrypted_int.to_bytes(decrypted_hex_len, 'big')
 
             for byte in decrypted_hex:
                 decrypted_data.append(byte)
