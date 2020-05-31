@@ -164,10 +164,17 @@ class CLI:
 
         print_chunks_difference(original_png.chunks_count, self.png.chunks_count)
 
-    def rsa(self, key_size=1024, encrypted_file_path="encrypted.png", decrypted_file_path="decrypted.png"):
+    def rsa(self, key_size=1024, encrypted_file_path="encrypted.png", decrypted_file_path="decrypted.png", mode="ECB"):
         assert self.png.get_chunk_by_type(b'IHDR').color_type != 3, "RSA module do not support pallette"
         rsa = RSA(key_size)
-        cipher, after_iend_data_embedded = rsa.ECB_encrypt(self.png.reconstructed_idat_data)
+
+        if mode == "ECB":
+            cipher, after_iend_data_embedded = rsa.ECB_encrypt(self.png.reconstructed_idat_data)
+        elif mode == "CBC":
+            cipher, after_iend_data_embedded = rsa.CBC_encrypt(self.png.reconstructed_idat_data)
+        else:
+            log.error("Unkown cipher method. Quitting...")
+            exit(1)
         rsa.create_encrypted_png(cipher, self.png.bytesPerPixel, self.png.get_chunk_by_type(b'IHDR').width,
                                     self.png.get_chunk_by_type(b'IHDR').height, encrypted_file_path, after_iend_data_embedded)
 
@@ -175,7 +182,10 @@ class CLI:
         new_png = Png(encrypted_file_path)
         new_png.parse(True)
 
-        decrypted_data = rsa.ECB_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
+        if mode == "ECB":
+            decrypted_data = rsa.ECB_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
+        elif mode == "CBC":
+            decrypted_data = rsa.CBC_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
         rsa.create_decrypted_png(decrypted_data, new_png.bytesPerPixel, new_png.get_chunk_by_type(b"IHDR").width,
                                     new_png.get_chunk_by_type(b"IHDR").height, decrypted_file_path)
 

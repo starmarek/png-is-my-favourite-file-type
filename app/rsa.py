@@ -2,6 +2,7 @@ from keygenerator import KeyGenerator
 from collections import deque
 from pngImage import Png
 import logging
+import random
 
 log = logging.getLogger(__name__)
 
@@ -45,21 +46,13 @@ class RSA:
             after_iend_data_embedded.append(cipher_hex[-1])
         cipher_data.append(after_iend_data_embedded.pop())
 
-        log.info("Done")
-
         return cipher_data, after_iend_data_embedded
 
     def ECB_decrypt(self, data, after_iend_data):
         log.info(f"Performing ECB RSA decryption using {self.key_size} bit private key")
 
-        after_iend_data = deque(after_iend_data)
-        data_to_decrypt = []
+        data_to_decrypt = self.concentate_data_to_decrypt(data, deque(after_iend_data))
         decrypted_data = []
-
-        for i in range(0, len(data), self.encrypted_chunk_size_in_bytes_substracted):
-            data_to_decrypt.extend(data[i:i + self.encrypted_chunk_size_in_bytes_substracted])
-            data_to_decrypt.append(after_iend_data.popleft())
-        data_to_decrypt.extend(after_iend_data)
 
         for i in range(0, len(data_to_decrypt), self.encrypted_chunk_size_in_bytes):
             chunk_to_decrypt_hex = bytes(data_to_decrypt[i: i + self.encrypted_chunk_size_in_bytes])
@@ -81,8 +74,6 @@ class RSA:
             for byte in decrypted_hex:
                 decrypted_data.append(byte)
 
-        log.info("Done")
-
         return decrypted_data
 
     def create_decrypted_png(self, decrpted_data, bytes_per_pixel, width, height, decrypted_png_path):
@@ -95,8 +86,6 @@ class RSA:
         f = open(decrypted_png_path, 'wb')
         png_writer.write(f, pixels_grouped_by_rows)
         f.close()
-
-        log.info("Done")
 
     def create_encrypted_png(self, cipher_data, bytes_per_pixel, width, height, encrypted_png_path, after_iend_data_embedded):
         log.info(f"Creating encrpyted file '{encrypted_png_path}'")
@@ -111,8 +100,6 @@ class RSA:
         f.write(bytes(after_iend_data_embedded))
         f.write(bytes(after_iend_data))
         f.close()
-
-        log.info("Done")
 
     def get_png_writer(self, width, height, bytes_per_pixel):
         if bytes_per_pixel == 1:
@@ -143,4 +130,75 @@ class RSA:
         
         return idat_data, after_iend_data
 
+    def concentate_data_to_decrypt(self, data, after_iend_data: deque):
+        data_to_decrypt = []
 
+        for i in range(0, len(data), self.encrypted_chunk_size_in_bytes_substracted):
+            data_to_decrypt.extend(data[i:i + self.encrypted_chunk_size_in_bytes_substracted])
+            data_to_decrypt.append(after_iend_data.popleft())
+        data_to_decrypt.extend(after_iend_data)
+
+        return data_to_decrypt
+
+    def CBC_encrypt(self, data):
+        log.info(f"Performing CBC RSA encryption using {self.key_size} bit public key")
+
+        cipher_data = []
+        decrypted_data = []
+        after_iend_data_embedded = []
+        self.original_data_len = len(data)
+        self.IV = random.getrandbits(self.key_size)
+        prev = self.IV
+
+        for i in range(0, len(data), self.encrypted_chunk_size_in_bytes_substracted):
+            chunk_to_encrypt_hex = bytes(data[i: i + self.encrypted_chunk_size_in_bytes_substracted])
+
+            prev = prev.to_bytes(self.encrypted_chunk_size_in_bytes, 'big')
+            prev = int.from_bytes(prev[:len(chunk_to_encrypt_hex)], 'big')
+            xor = int.from_bytes(chunk_to_encrypt_hex, 'big') ^ prev
+
+            cipher_int = pow(xor, self.public_key[0], self.public_key[1])
+            prev = cipher_int
+
+            cipher_hex = cipher_int.to_bytes(self.encrypted_chunk_size_in_bytes, 'big')
+
+            for i in range(self.encrypted_chunk_size_in_bytes_substracted):
+                cipher_data.append(cipher_hex[i])
+            after_iend_data_embedded.append(cipher_hex[-1])
+        cipher_data.append(after_iend_data_embedded.pop())
+
+        return cipher_data, after_iend_data_embedded
+
+    def CBC_decrypt(self, data, after_iend_data):
+        log.info(f"Performing CBC RSA decryption using {self.key_size} bit private key")
+
+        data_to_decrypt = self.concentate_data_to_decrypt(data, deque(after_iend_data))
+        decrypted_data = []
+        prev = self.IV
+
+        for i in range(0, len(data_to_decrypt), self.encrypted_chunk_size_in_bytes):
+            chunk_to_decrypt_hex = bytes(data_to_decrypt[i: i + self.encrypted_chunk_size_in_bytes])
+
+            decrypted_int = pow(int.from_bytes(chunk_to_decrypt_hex, 'big'), self.private_key[0], self.private_key[1])
+
+            # We don't know how long was the last original chunk (no matter what, chunks after encryption have fixd key-length size, so extra bytes could have been added),
+            # so below, before creating decrpyted_hex of fixed size we check if adding it to decrpted_data wouldn't exceed the original_data_len
+            # If it does, we know that the length of last chunk was smaller and we can retrieve it's length
+            if len(decrypted_data) + self.encrypted_chunk_size_in_bytes_substracted > self.original_data_len:
+                # last original chunk
+                decrypted_hex_len = self.original_data_len - len(decrypted_data)
+            else:
+                # standard encryption_RSA_chunk length
+                decrypted_hex_len = self.encrypted_chunk_size_in_bytes_substracted
+
+            prev = prev.to_bytes(self.encrypted_chunk_size_in_bytes, 'big')
+            prev = int.from_bytes(prev[:decrypted_hex_len], 'big')
+            xor = prev ^ decrypted_int
+            prev = int.from_bytes(chunk_to_decrypt_hex, 'big')
+
+            decrypted_hex = xor.to_bytes(decrypted_hex_len, 'big')
+
+            for byte in decrypted_hex:
+                decrypted_data.append(byte)
+
+        return decrypted_data
