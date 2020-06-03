@@ -2,7 +2,7 @@ import logging
 import traceback
 from pngparser import PngParser
 from pngImage import Png
-from rsa import RSAClass
+from rsa import _RSA
 
 try:
     import cv2
@@ -164,16 +164,15 @@ class CLI:
 
         print_chunks_difference(original_png.chunks_count, self.png.chunks_count)
 
+    
     def rsa(self, key_size=1024, encrypted_file_path="encrypted.png", decrypted_file_path="decrypted.png", mode="ECB"):
         assert self.png.get_chunk_by_type(b'IHDR').color_type != 3, "RSA module do not support pallette"
-        rsa = RSAClass(key_size)
+        rsa = RSA(key_size)
 
         if mode == "ECB":
             cipher, after_iend_data_embedded = rsa.ECB_encrypt(self.png.reconstructed_idat_data)
         elif mode == "CBC":
             cipher, after_iend_data_embedded = rsa.CBC_encrypt(self.png.reconstructed_idat_data)
-        elif mode == "Crypto":
-            cipher, after_iend_data_embedded = rsa.Crypto_encrypt(self.png.reconstructed_idat_data)
         else:
             log.error("Unkown cipher method. Quitting...")
             exit(1)
@@ -188,10 +187,35 @@ class CLI:
             decrypted_data = rsa.ECB_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
         elif mode == "CBC":
             decrypted_data = rsa.CBC_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
-        elif mode == "Crypto":
-            decrypted_data = rsa.Crypto_decrypt(new_png.reconstructed_idat_data, new_png.after_iend_data)
         rsa.create_decrypted_png(decrypted_data, new_png.bytesPerPixel, new_png.get_chunk_by_type(b"IHDR").width,
                                     new_png.get_chunk_by_type(b"IHDR").height, decrypted_file_path)
+
+
+    def rsacompare(self, key_size=1024, encrypted_file_path_cbc="encrypted_cbc.png", encrypted_file_path_ecb="encrypted_ecb.png", encrypted_file_path_crypto="encrypted_crypto.png"):
+        assert self.png.get_chunk_by_type(b'IHDR').color_type != 3, "RSA module do not support pallette"
+        rsa = _RSA(key_size)
+        
+        # ECB
+        cipher, after_iend_data_embedded = rsa.ECB_encrypt(self.png.reconstructed_idat_data)
+        rsa.create_encrypted_png(cipher, self.png.bytesPerPixel, self.png.get_chunk_by_type(b'IHDR').width,
+                                    self.png.get_chunk_by_type(b'IHDR').height, encrypted_file_path_ecb, after_iend_data_embedded)
+        new_png = Png(encrypted_file_path_ecb)
+        new_png.parse(True)
+        
+        # CBC
+        cipher, after_iend_data_embedded = rsa.CBC_encrypt(self.png.reconstructed_idat_data)
+        rsa.create_encrypted_png(cipher, self.png.bytesPerPixel, self.png.get_chunk_by_type(b'IHDR').width,
+                                    self.png.get_chunk_by_type(b'IHDR').height, encrypted_file_path_cbc, after_iend_data_embedded)
+        new_png = Png(encrypted_file_path_cbc)
+        new_png.parse(True)
+
+        # Crypto
+        cipher, after_iend_data_embedded = rsa.Crypto_encrypt(self.png.reconstructed_idat_data)
+        rsa.create_encrypted_png(cipher, self.png.bytesPerPixel, self.png.get_chunk_by_type(b'IHDR').width,
+                                    self.png.get_chunk_by_type(b'IHDR').height, encrypted_file_path_crypto, after_iend_data_embedded)
+        new_png = Png(encrypted_file_path_crypto)
+        new_png.parse(True)
+
 
 if __name__ == '__main__':
     fire.Fire(CLI)
